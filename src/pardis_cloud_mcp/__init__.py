@@ -1,0 +1,1 @@
+"""Pardis Cloud MCP server."""
