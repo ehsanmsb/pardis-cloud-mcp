@@ -9,13 +9,16 @@ description = "A minimal authenticated MCP server for Pardis Cloud"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
+  "cryptography>=45,<51",
+  "httpx>=0.28,<1",
   "mcp>=2,<3",
   "PyJWT[crypto]>=2.10,<3",
   "pydantic>=2,<3",
+  "redis>=6,<8",
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8,<10"]
+dev = ["fakeredis>=2.30,<3", "pytest>=8,<10"]
 
 [project.scripts]
 pardis-cloud-mcp = "pardis_cloud_mcp.server:main"
