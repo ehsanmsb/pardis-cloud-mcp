@@ -1,69 +1,102 @@
 # Pardis Cloud MCP
 
-A minimal MCP server protected by Keycloak/OIDC. The first tool, `whoami`, proves that the server receives and validates the caller's access token.
+An HTTP MCP server with browser login through Keycloak. This phase authenticates users only; it does not call Pardis Cloud APIs yet.
 
-This version authenticates the user to the MCP server. It does **not** yet exchange the Keycloak token for Pardis Cloud credentials or call Huawei/Pardis APIs.
+## Architecture
 
-## How authentication works
+```text
+MCP agent                 Pardis MCP backend                 Keycloak
+    | POST /mcp (no token)       |                              |
+    |<---- 401 + discovery ------|                              |
+    | register + /authorize ---->|                              |
+    |<---- redirect to login ----|                              |
+    |---------------- browser login --------------------------->|
+    |                          callback + code <----------------|
+    |                          code + client secret ----------->|
+    |                          Keycloak tokens <----------------|
+    |<---- opaque MCP token -----|                              |
+    | POST /mcp + MCP token ---->|                              |
+```
 
-1. An MCP client connects to `/mcp` without a token.
-2. The server responds with `401` and publishes OAuth Protected Resource Metadata.
-3. The client discovers Keycloak from that metadata and completes Authorization Code + PKCE in the browser.
-4. The client sends the Keycloak access token to this server.
-5. The server verifies the JWT signature, issuer, audience, expiry, and required scope before any tool runs.
+Redis stores the registered MCP clients, pending browser-login state, user sessions, Keycloak tokens, and MCP tokens. Every stored value containing credentials or identity data is encrypted with Fernet. Redis keys contain only hashes of bearer tokens.
 
-## Keycloak setup
+The two clients are different:
 
-Use a dedicated client/client-scope for this MCP server; do not reuse the Pardis console SSO client.
+- The **Keycloak client** (`OIDC_CLIENT_ID`) is confidential. Its secret exists only in this backend/container.
+- The **MCP agent client** is dynamically registered and uses Authorization Code + PKCE. The MCP SDK may issue it a separate registration secret, but it never receives the Keycloak client secret or Keycloak tokens.
 
-- Issuer: `https://<keycloak>/realms/<realm>`
-- Flow: Authorization Code with PKCE S256
-- Access-token audience: `pardis-mcp`
-- Required scope: `mcp:tools`
-- Signing algorithm: RS256
+## Keycloak client
 
-Add an Audience mapper so `pardis-mcp` appears in the access token's `aud` claim, and expose `mcp:tools` in its `scope` claim.
+Create a dedicated OpenID Connect client, for example `pardis-mcp-backend`:
 
-For automatic browser login, the MCP client must either be pre-registered in Keycloak or Keycloak Dynamic Client Registration must be enabled with a restricted policy. Do not enable unrestricted anonymous registration in production.
+- Client authentication: **On** (confidential client)
+- Standard flow: **On**
+- Direct access grants: **Off**
+- Valid redirect URI: `http://127.0.0.1:8000/oauth/keycloak/callback` for local use
+- Web origins: not needed for the server-side code exchange
+- ID token signing algorithm: RS256
+
+Copy the generated secret into `OIDC_CLIENT_SECRET`. In production, use the public HTTPS callback URL instead of localhost and inject secrets through your deployment secret manager.
+
+The Keycloak client does not need the `mcp:tools` client scope. That scope belongs to the outer MCP authorization server implemented by this application.
 
 ## Run locally
 
-Python 3.11+ and [`uv`](https://docs.astral.sh/uv/) are recommended.
+Prerequisites: Python 3.11+, Redis, and [`uv`](https://docs.astral.sh/uv/).
 
 ```bash
 cp .env.example .env
-# Edit .env, then export its values into your shell.
-set -a; source .env; set +a
+python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+# Put the generated key and the Keycloak client secret in .env.
 
 uv sync --extra dev
 uv run pardis-cloud-mcp
 ```
 
-The MCP endpoint is `http://127.0.0.1:8000/mcp`. Its discovery document is:
+Useful URLs:
 
-```text
-http://127.0.0.1:8000/.well-known/oauth-protected-resource/mcp
-```
+- MCP: `http://127.0.0.1:8000/mcp`
+- Health: `http://127.0.0.1:8000/health`
+- OAuth metadata: `http://127.0.0.1:8000/.well-known/oauth-authorization-server`
+- Protected resource metadata: `http://127.0.0.1:8000/.well-known/oauth-protected-resource/mcp`
 
-Run the tests with:
+Run automated tests (Keycloak and Redis are simulated in these tests):
 
 ```bash
 uv run pytest
 ```
 
+## Run in containers
+
+After filling `.env`:
+
+```bash
+docker compose up --build
+```
+
+The compose stack starts both the MCP backend and a persistent Redis container. If you prefer your existing local Redis, run the MCP process directly with `REDIS_URL=redis://127.0.0.1:6379/0`.
+
 ## Configuration
 
-| Variable | Required | Example |
+| Variable | Required | Purpose |
 | --- | --- | --- |
-| `OIDC_ISSUER_URL` | yes | `https://keycloak.example.com/realms/snapp` |
-| `OIDC_AUDIENCE` | yes | `pardis-mcp` |
-| `MCP_RESOURCE_URL` | yes | `https://mcp.pardiscloud.ir/mcp` |
-| `MCP_REQUIRED_SCOPE` | no | `mcp:tools` |
-| `MCP_HOST` | no | `0.0.0.0` |
-| `MCP_PORT` | no | `8000` |
+| `OIDC_ISSUER_URL` | yes | Keycloak realm URL |
+| `OIDC_CLIENT_ID` | yes | Confidential Keycloak client ID |
+| `OIDC_CLIENT_SECRET` | yes | Confidential Keycloak client secret |
+| `MCP_OAUTH_ISSUER_URL` | yes | Public base URL of this OAuth/MCP backend |
+| `MCP_RESOURCE_URL` | yes | Exact public MCP endpoint URL |
+| `MCP_REQUIRED_SCOPE` | no | Outer MCP scope; defaults to `mcp:tools` |
+| `REDIS_URL` | yes | Redis connection URL |
+| `REDIS_PREFIX` | no | Prefix used for Redis keys |
+| `TOKEN_ENCRYPTION_KEY` | yes | Fernet key used to encrypt Redis values |
+| `MCP_HOST` | no | Bind host; defaults to `127.0.0.1` |
+| `MCP_PORT` | no | Bind port; defaults to `8000` |
 
-In production, `MCP_RESOURCE_URL` must be the exact public HTTPS URL used by clients.
+## Security boundaries
 
-## Next safe increment
-
-After login works end to end, add one read-only Pardis Cloud tool. Per-user cloud access should use an OIDC-to-STS exchange for temporary AK/SK/security-token credentials; never treat the Keycloak access token itself as a Huawei API credential.
+- Never put `OIDC_CLIENT_SECRET` or `TOKEN_ENCRYPTION_KEY` in Git.
+- Use HTTPS for every public URL in production.
+- Redis persistence is not a substitute for encryption; keep the Fernet key outside Redis.
+- This implementation revokes every MCP access/refresh token in the same login session when one is revoked.
+- Put rate limiting in front of public `/register`, `/authorize`, and `/token` endpoints before production deployment.
+- Connecting the authenticated identity to Pardis Cloud permissions is intentionally deferred to the next phase.
