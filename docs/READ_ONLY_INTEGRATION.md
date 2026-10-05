@@ -41,7 +41,8 @@ PARDIS_CA_BUNDLE=
 ```
 
 These are placeholders, not working endpoints. IAM endpoint, ECS endpoint and IdP ID are required
-together. With all three empty, only authentication tools are registered. A default project is optional;
+together for cloud tools. Select tools in `config.yaml`; for authentication-only mode, set
+`tools.enabled` to `[whoami]` and leave the cloud settings empty. A default project is optional;
 it must be in the signed-in user's accessible project list and is not an account ID.
 
 ```bash
@@ -49,6 +50,8 @@ uv sync --locked --extra dev
 uv run --env-file .env pardis-cloud-mcp
 ```
 
+The server reads `config.yaml` from its working directory, or the path in `MCP_CONFIG_FILE`.
+Docker Compose mounts that file read-only. Disabled tools cannot be listed or called through MCP.
 Restart the existing backend process after changing configuration; do not start a second process on
 the same port. Reconnect the MCP client to refresh its tool list, then perform browser login again.
 The existing HTTP MCP URL and callback stay unchanged. Docker Compose reads the same `.env`;
