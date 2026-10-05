@@ -1,5 +1,7 @@
 .git
 .env
+.env.*
+helm/values.local.yaml
 .pytest_cache
 .venv
 __pycache__

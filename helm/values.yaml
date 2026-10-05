@@ -1,0 +1,94 @@
+replicaCount: 1
+fullnameOverride: ""
+
+# Main-branch CI publishes here. Select an existing release tag before deployment.
+image:
+  repository: ghcr.io/ehsanmsb/pardis-cloud-mcp
+  tag: "1.0.0"
+  pullPolicy: IfNotPresent
+imagePullSecrets: []
+
+service:
+  port: 8000
+
+# Rendered into a ConfigMap and mounted as /app/config.yaml.
+# Enable cloud tools after filling the PARDIS_* environment variables below.
+config:
+  tools:
+    enabled:
+      - whoami
+    disabled: []
+
+# Non-secret environment variables. Add, remove or change entries as needed.
+# Keep MCP_HOST=0.0.0.0 for Kubernetes. All values are rendered as strings.
+env:
+  MCP_HOST: 0.0.0.0
+  MCP_PORT: "8000"
+  MCP_CONFIG_FILE: /app/config.yaml
+  MCP_OAUTH_ISSUER_URL: https://pardis.mcp.example.com
+  MCP_RESOURCE_URL: https://pardis.mcp.example.com/mcp
+  MCP_REQUIRED_SCOPE: mcp:tools
+  OIDC_ISSUER_URL: https://keycloak.example.com/realms/example
+  OIDC_CLIENT_ID: pardis-mcp-backend
+  REDIS_PREFIX: pardis-mcp
+  PARDIS_IAM_ENDPOINT: ""
+  PARDIS_ECS_ENDPOINT: ""
+  PARDIS_IDP_ID: ""
+  PARDIS_PROJECT_ID: ""
+  PARDIS_CA_BUNDLE: ""
+
+# Create this Secret before installation. Required MCP keys:
+# OIDC_CLIENT_SECRET, TOKEN_ENCRYPTION_KEY, REDIS_URL.
+# Redis also reads REDIS_PASSWORD from the same Secret.
+envFrom:
+  - secretRef:
+      name: snapp-support-mcp
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+httpProxy:
+  enabled: true
+  apiVersion: projectcontour.io/v1
+  ingressClassName: private
+  virtualhost:
+    fqdn: pardis.mcp.example.com
+    tls:
+      enableFallbackCertificate: false
+      secretName: example-certificates/exxample-com-tls
+  timeoutPolicy:
+    response: 300s
+    idle: 300s
+
+redis:
+  enabled: true
+  fullnameOverride: "snapp-support-mcp-redis"
+  architecture: standalone
+  # Permit the explicitly selected bitnamilegacy image repository.
+  global:
+    security:
+      allowInsecureImages: true
+  image:
+    registry: docker.io
+    repository: bitnamilegacy/redis
+    tag: "8.2.1-debian-12-r0"
+    pullPolicy: IfNotPresent
+  auth:
+    enabled: true
+    existingSecret: "snapp-support-mcp"
+    existingSecretPasswordKey: "REDIS_PASSWORD"
+  master:
+    podSecurityContext:
+      enabled: false
+    containerSecurityContext:
+      enabled: false
+    persistence:
+      enabled: true
+      size: 1Gi
+  replica:
+    replicaCount: 0

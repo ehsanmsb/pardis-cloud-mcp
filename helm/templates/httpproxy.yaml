@@ -1,0 +1,22 @@
+{{- if .Values.httpProxy.enabled }}
+apiVersion: {{ .Values.httpProxy.apiVersion }}
+kind: HTTPProxy
+metadata:
+  name: {{ include "pardis-mcp.fullname" . }}
+  labels:
+    {{- include "pardis-mcp.labels" . | nindent 4 }}
+spec:
+  ingressClassName: {{ .Values.httpProxy.ingressClassName | quote }}
+  virtualhost:
+    {{- toYaml .Values.httpProxy.virtualhost | nindent 4 }}
+  routes:
+    - conditions:
+        - prefix: /
+      {{- with .Values.httpProxy.timeoutPolicy }}
+      timeoutPolicy:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      services:
+        - name: {{ include "pardis-mcp.fullname" . }}
+          port: {{ .Values.service.port }}
+{{- end }}
