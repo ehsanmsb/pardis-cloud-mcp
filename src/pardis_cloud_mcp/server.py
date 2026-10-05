@@ -2,21 +2,19 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
-from typing import Annotated, Any
 
 from cryptography.fernet import Fernet
-from pydantic import AnyHttpUrl, BaseModel, Field
+from pydantic import AnyHttpUrl
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
 from mcp.server import MCPServer
-from mcp.server.auth.middleware.auth_context import get_access_token
 from mcp.server.auth.settings import AuthSettings, ClientRegistrationOptions, RevocationOptions
-from mcp.server.mcpserver.exceptions import ToolError
-from mcp_types import ToolAnnotations
 
 from pardis_cloud_mcp.auth import RedisKeycloakOAuthProvider
-from pardis_cloud_mcp.cloud import CloudError, CloudProject, CloudSettings, EcsPage, PardisCloud
+from pardis_cloud_mcp.cloud import CloudSettings
+from pardis_cloud_mcp.config import load_config
+from pardis_cloud_mcp.toolset import register_tools
 
 
 @dataclass(frozen=True)
@@ -37,6 +35,8 @@ class Settings:
     access_token_ttl_seconds: int = 900
     refresh_token_ttl_seconds: int = 28_800
     cloud: CloudSettings | None = None
+    enabled_tools: tuple[str, ...] = ("*",)
+    disabled_tools: tuple[str, ...] = ()
 
     @classmethod
     def from_env(cls) -> Settings:
@@ -59,6 +59,10 @@ class Settings:
         except (ValueError, TypeError) as exc:
             raise RuntimeError("TOKEN_ENCRYPTION_KEY must be a valid Fernet key") from exc
 
+        if "MCP_ENABLED_TOOLS" in os.environ or "MCP_DISABLED_TOOLS" in os.environ:
+            raise ValueError("Move MCP_ENABLED_TOOLS/MCP_DISABLED_TOOLS from the environment to tools.enabled/tools.disabled in config.yaml")
+        config = load_config(os.getenv("MCP_CONFIG_FILE", "config.yaml"))
+
         return cls(
             keycloak_issuer_url=os.environ["OIDC_ISSUER_URL"].rstrip("/"),
             keycloak_client_id=os.environ["OIDC_CLIENT_ID"],
@@ -72,6 +76,8 @@ class Settings:
             host=os.getenv("MCP_HOST", "127.0.0.1"),
             port=int(os.getenv("MCP_PORT", "8000")),
             cloud=CloudSettings.from_env(),
+            enabled_tools=tuple(config.tools.enabled),
+            disabled_tools=tuple(config.tools.disabled),
         )
 
     @property
@@ -89,14 +95,6 @@ class Settings:
     @property
     def keycloak_redirect_uri(self) -> str:
         return f"{self.oauth_issuer_url}/oauth/keycloak/callback"
-
-
-class Identity(BaseModel):
-    subject: str
-    username: str | None
-    email: str | None
-    client_id: str
-    scopes: list[str]
 
 
 def build_server(
@@ -134,54 +132,7 @@ def build_server(
             return JSONResponse({"status": "unhealthy", "redis": "down"}, status_code=503)
         return JSONResponse({"status": "ok", "redis": "up"})
 
-    @server.tool(description="Return the identity authenticated through Keycloak.")
-    def whoami() -> Identity:
-        token = get_access_token()
-        if token is None:
-            raise RuntimeError("Authentication context is unavailable")
-
-        claims: dict[str, Any] = token.claims or {}
-        return Identity(
-            subject=token.subject or "",
-            username=claims.get("preferred_username"),
-            email=claims.get("email"),
-            client_id=token.client_id,
-            scopes=token.scopes,
-        )
-
-    if settings.cloud is not None:
-        cloud = PardisCloud(settings.cloud, oauth_provider)
-
-        @server.tool(
-            description="List IAM projects accessible to the signed-in user. ECS operations use this deployment's configured regional endpoint; choose a project in that region.",
-            annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True),
-        )
-        async def list_projects() -> list[CloudProject]:
-            token = get_access_token()
-            if token is None:
-                raise ToolError("Authentication context is unavailable")
-            try:
-                return await cloud.list_projects(token.token)
-            except CloudError as exc:
-                raise ToolError(str(exc)) from None
-
-        @server.tool(
-            description="List one page of ECS instances using the signed-in user's permissions and the configured regional endpoint. Choose project_id from list_projects; if omitted, use the configured default or the sole accessible project. Pass next_marker to fetch another page. No resources are changed.",
-            annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True),
-        )
-        async def list_ecs(
-            limit: Annotated[int, Field(ge=1, le=100)] = 25,
-            marker: Annotated[str | None, Field(pattern=r"^[A-Za-z0-9-]{1,128}$")] = None,
-            project_id: Annotated[str | None, Field(pattern=r"^[a-fA-F0-9]{32}$")] = None,
-        ) -> EcsPage:
-            token = get_access_token()
-            if token is None:
-                raise ToolError("Authentication context is unavailable")
-            try:
-                return await cloud.list_ecs(token.token, limit, marker, project_id)
-            except CloudError as exc:
-                raise ToolError(str(exc)) from None
-
+    register_tools(server, oauth_provider, settings.cloud, settings.enabled_tools, settings.disabled_tools)
     return server
 
 

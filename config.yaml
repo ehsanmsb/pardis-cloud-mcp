@@ -1,0 +1,7 @@
+# Select the tools exposed by this deployment. Cloud tools require Pardis settings in .env.
+tools:
+  enabled:
+    - whoami
+    - list_projects
+    - list_ecs
+  disabled: []

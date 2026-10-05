@@ -639,6 +639,7 @@ dependencies = [
     { name = "mcp" },
     { name = "pydantic" },
     { name = "pyjwt", extra = ["crypto"] },
+    { name = "pyyaml" },
     { name = "redis" },
 ]
 
@@ -658,6 +659,7 @@ requires-dist = [
     { name = "pydantic", specifier = ">=2,<3" },
     { name = "pyjwt", extras = ["crypto"], specifier = ">=2.10,<3" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8,<10" },
+    { name = "pyyaml", specifier = ">=6,<7" },
     { name = "redis", specifier = ">=6,<8" },
 ]
 provides-extras = ["dev"]
