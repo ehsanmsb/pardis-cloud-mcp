@@ -2,18 +2,21 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
-from typing import Any
+from typing import Annotated, Any
 
 from cryptography.fernet import Fernet
-from pydantic import AnyHttpUrl, BaseModel
+from pydantic import AnyHttpUrl, BaseModel, Field
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
 from mcp.server import MCPServer
 from mcp.server.auth.middleware.auth_context import get_access_token
 from mcp.server.auth.settings import AuthSettings, ClientRegistrationOptions, RevocationOptions
+from mcp.server.mcpserver.exceptions import ToolError
+from mcp_types import ToolAnnotations
 
 from pardis_cloud_mcp.auth import RedisKeycloakOAuthProvider
+from pardis_cloud_mcp.cloud import CloudError, CloudProject, CloudSettings, EcsPage, PardisCloud
 
 
 @dataclass(frozen=True)
@@ -33,6 +36,7 @@ class Settings:
     authorization_code_ttl_seconds: int = 60
     access_token_ttl_seconds: int = 900
     refresh_token_ttl_seconds: int = 28_800
+    cloud: CloudSettings | None = None
 
     @classmethod
     def from_env(cls) -> Settings:
@@ -67,6 +71,7 @@ class Settings:
             redis_prefix=os.getenv("REDIS_PREFIX", "pardis-mcp"),
             host=os.getenv("MCP_HOST", "127.0.0.1"),
             port=int(os.getenv("MCP_PORT", "8000")),
+            cloud=CloudSettings.from_env(),
         )
 
     @property
@@ -143,6 +148,39 @@ def build_server(
             client_id=token.client_id,
             scopes=token.scopes,
         )
+
+    if settings.cloud is not None:
+        cloud = PardisCloud(settings.cloud, oauth_provider)
+
+        @server.tool(
+            description="List IAM projects accessible to the signed-in user. ECS operations use this deployment's configured regional endpoint; choose a project in that region.",
+            annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True),
+        )
+        async def list_projects() -> list[CloudProject]:
+            token = get_access_token()
+            if token is None:
+                raise ToolError("Authentication context is unavailable")
+            try:
+                return await cloud.list_projects(token.token)
+            except CloudError as exc:
+                raise ToolError(str(exc)) from None
+
+        @server.tool(
+            description="List one page of ECS instances using the signed-in user's permissions and the configured regional endpoint. Choose project_id from list_projects; if omitted, use the configured default or the sole accessible project. Pass next_marker to fetch another page. No resources are changed.",
+            annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True),
+        )
+        async def list_ecs(
+            limit: Annotated[int, Field(ge=1, le=100)] = 25,
+            marker: Annotated[str | None, Field(pattern=r"^[A-Za-z0-9-]{1,128}$")] = None,
+            project_id: Annotated[str | None, Field(pattern=r"^[a-fA-F0-9]{32}$")] = None,
+        ) -> EcsPage:
+            token = get_access_token()
+            if token is None:
+                raise ToolError("Authentication context is unavailable")
+            try:
+                return await cloud.list_ecs(token.token, limit, marker, project_id)
+            except CloudError as exc:
+                raise ToolError(str(exc)) from None
 
     return server
 

@@ -11,6 +11,7 @@ requires-python = ">=3.11"
 dependencies = [
   "cryptography>=45,<51",
   "httpx>=0.28,<1",
+  "huaweicloudsdkecs>=3.1,<4",
   "mcp>=2,<3",
   "PyJWT[crypto]>=2.10,<3",
   "pydantic>=2,<3",

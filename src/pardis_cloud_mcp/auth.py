@@ -334,9 +334,29 @@ class RedisKeycloakOAuthProvider(
         stored = await self._get_model(self._key("access", self._digest(token)), StoredAccessToken)
         if not isinstance(stored, StoredAccessToken):
             return None
-        if stored.value.expires_at and stored.value.expires_at < int(time.time()):
+        if stored.value.expires_at and stored.value.expires_at <= int(time.time()):
+            return None
+        session = await self._get_model(self._key("session", stored.session_id), UserSession)
+        if not isinstance(session, UserSession) or session.subject != stored.value.subject:
             return None
         return stored.value
+
+    async def session_for_access_token(self, token: str) -> UserSession | None:
+        """Resolve only a live, resource-bound MCP token to its own session."""
+        access = await self.load_access_token(token)
+        if (
+            access is None
+            or access.resource != self.settings.resource_url
+            or self.settings.required_scope not in access.scopes
+        ):
+            return None
+        stored = await self._get_model(self._key("access", self._digest(token)), StoredAccessToken)
+        if not isinstance(stored, StoredAccessToken):
+            return None
+        session = await self._get_model(self._key("session", stored.session_id), UserSession)
+        if not isinstance(session, UserSession) or session.subject != access.subject:
+            return None
+        return session
 
     async def load_refresh_token(
         self, client: OAuthClientInformationFull, refresh_token: str
