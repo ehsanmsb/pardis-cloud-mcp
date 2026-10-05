@@ -1,0 +1,36 @@
+branches:
+  - main
+
+tagFormat: v${version}
+
+plugins:
+  - - "@semantic-release/commit-analyzer"
+    - preset: conventionalcommits
+      releaseRules:
+        - breaking: true
+          release: major
+        - type: feat
+          release: minor
+        - type: fix
+          release: patch
+        - type: perf
+          release: patch
+  - - "@semantic-release/release-notes-generator"
+    - preset: conventionalcommits
+  - - "@semantic-release/exec"
+    # Promote the image already built and tested in this run, without rebuilding it.
+    # Registry publication must succeed before semantic-release creates the Git tag.
+    - prepareCmd: |
+        set -eu
+        : "$IMAGE_NAME" "$IMAGE_DIGEST"
+        version="${nextRelease.version}"
+        major_minor="$(printf '%s' "$version" | cut -d. -f1,2)"
+        docker buildx imagetools create \
+          --tag "$IMAGE_NAME:$version" \
+          --tag "$IMAGE_NAME:$major_minor" \
+          --tag "$IMAGE_NAME:latest" \
+          "$IMAGE_NAME@$IMAGE_DIGEST"
+  - - "@semantic-release/github"
+    - successComment: false
+      failComment: false
+      releasedLabels: false
