@@ -1,6 +1,8 @@
 # Pardis Cloud MCP
 
-An HTTP MCP server with browser login through Keycloak. This phase authenticates users only; it does not call Pardis Cloud APIs yet.
+An HTTP MCP server with browser login through Keycloak and optional read-only ECS access through Huawei-compatible Pardis APIs. Resource creation is not implemented yet.
+
+The [MVP execution plan](docs/MVP_PLAN.md) tracks completed work, remaining authentication fixes, ECS provisioning milestones, and acceptance tests.
 
 ## Architecture
 
@@ -49,8 +51,8 @@ cp .env.example .env
 python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
 # Put the generated key and the Keycloak client secret in .env.
 
-uv sync --extra dev
-uv run pardis-cloud-mcp
+uv sync --locked --extra dev
+uv run --env-file .env pardis-cloud-mcp
 ```
 
 Useful URLs:
@@ -65,6 +67,23 @@ Run automated tests (Keycloak and Redis are simulated in these tests):
 ```bash
 uv run pytest
 ```
+
+## Read-only Pardis integration
+
+Set the IAM endpoint, ECS endpoint and IdP ID in the private `.env` to enable `list_projects` and `list_ecs`.
+Without them, the server remains in authentication-only mode. Partial configuration fails at startup.
+
+`PARDIS_PROJECT_ID` is an optional default, not a permission grant. Projects are discovered using
+the signed-in user's federated token. If there is exactly one accessible project it is selected
+automatically; otherwise choose an ID returned by `list_projects`. ECS uses the configured regional
+endpoint, so choose a project in that region. IAM still checks the actual operation permissions.
+
+The backend exchanges the user's Keycloak ID token for an unscoped IAM token, obtains temporary
+AK/SK/security-token credentials, and calls the ECS API using the official Huawei SDK. The agent
+receives only a page of instance summaries and the mapped cloud identity, never credentials.
+
+See [the read-only integration runbook](docs/READ_ONLY_INTEGRATION.md) for prerequisites, expiry
+behavior, test prompts, limitations, and the live acceptance checklist.
 
 ## Run in containers
 
@@ -91,6 +110,11 @@ The compose stack starts both the MCP backend and a persistent Redis container. 
 | `TOKEN_ENCRYPTION_KEY` | yes | Fernet key used to encrypt Redis values |
 | `MCP_HOST` | no | Bind host; defaults to `127.0.0.1` |
 | `MCP_PORT` | no | Bind port; defaults to `8000` |
+| `PARDIS_IAM_ENDPOINT` | for cloud tools | Verified HTTPS IAM API origin |
+| `PARDIS_ECS_ENDPOINT` | for cloud tools | Verified HTTPS ECS API origin |
+| `PARDIS_PROJECT_ID` | no | Optional default project ID; must belong to the user's accessible projects |
+| `PARDIS_IDP_ID` | for cloud tools | Programmatic OIDC identity provider trusting the MCP client |
+| `PARDIS_CA_BUNDLE` | no | Optional PEM CA bundle used for both cloud services |
 
 ## Security boundaries
 
@@ -99,4 +123,6 @@ The compose stack starts both the MCP backend and a persistent Redis container. 
 - Redis persistence is not a substitute for encryption; keep the Fernet key outside Redis.
 - This implementation revokes every MCP access/refresh token in the same login session when one is revoked.
 - Put rate limiting in front of public `/register`, `/authorize`, and `/token` endpoints before production deployment.
-- Connecting the authenticated identity to Pardis Cloud permissions is intentionally deferred to the next phase.
+- Cloud endpoints are operator configuration, never tool arguments. Selected projects must appear in the user's IAM project list. TLS verification is enabled; cloud redirects are not followed.
+- Cloud credentials are encrypted, isolated by session and configuration, and cached only until their expiry safety margin or session expiry, whichever is sooner.
+- This is a local, controlled MVP. Per-client consent and remaining refresh/revocation coordination in the MVP plan must be completed before multi-user or public deployment.
