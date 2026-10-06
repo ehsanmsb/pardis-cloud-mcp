@@ -61,9 +61,14 @@ uv run --env-file .env pardis-cloud-mcp
 Useful URLs:
 
 - MCP: `http://127.0.0.1:8000/mcp`
+- Home page: `http://127.0.0.1:8000/`
 - Health: `http://127.0.0.1:8000/health`
 - OAuth metadata: `http://127.0.0.1:8000/.well-known/oauth-authorization-server`
 - Protected resource metadata: `http://127.0.0.1:8000/.well-known/oauth-protected-resource/mcp`
+
+After Keycloak sign-in, a local agent callback (`localhost` or loopback IP) displays the Pardis Cloud
+completion page. The page sends the authorization code to the agent's local callback in a hidden frame.
+Other callback URLs keep the standard OAuth redirect. The public home and 404 pages use the same design.
 
 Run automated tests (Keycloak and Redis are simulated in these tests):
 

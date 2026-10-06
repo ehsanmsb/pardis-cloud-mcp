@@ -1,6 +1,8 @@
 import asyncio
 import base64
 import hashlib
+import re
+from html import unescape
 from urllib.parse import parse_qs, urlparse
 
 import fakeredis.aioredis
@@ -8,6 +10,7 @@ import httpx
 from cryptography.fernet import Fernet
 
 from pardis_cloud_mcp.auth import RedisKeycloakOAuthProvider
+from pardis_cloud_mcp.auth_page import is_loopback_callback
 from pardis_cloud_mcp.server import Settings, build_server
 
 
@@ -104,8 +107,17 @@ def test_oauth_browser_flow_stores_tokens_encrypted_in_redis():
                 "/oauth/keycloak/callback",
                 params={"code": "keycloak-code", "state": keycloak_query["state"][0]},
             )
-            assert callback.status_code == 302
-            callback_query = parse_qs(urlparse(callback.headers["location"]).query)
+            assert callback.status_code == 200
+            assert "Sign-in complete" in callback.text
+            assert "Close this tab" not in callback.text
+            assert "Continue to agent" not in callback.text
+            assert "Keycloak</span>" not in callback.text
+            assert "Claude" not in callback.text
+            assert callback.headers["cache-control"] == "no-store"
+            assert "frame-src http://127.0.0.1:8765" in callback.headers["content-security-policy"]
+            handoff = re.search(r'<iframe class="agent-handoff" src="([^"]+)"', callback.text)
+            assert handoff is not None
+            callback_query = parse_qs(urlparse(unescape(handoff.group(1))).query)
             assert callback_query["state"] == ["agent-state"]
 
             token = await client.post(
@@ -141,6 +153,13 @@ def test_oauth_browser_flow_stores_tokens_encrypted_in_redis():
     asyncio.run(scenario())
 
 
+def test_only_loopback_http_callbacks_use_completion_page():
+    assert is_loopback_callback("http://localhost:53123/callback")
+    assert is_loopback_callback("http://[::1]:53123/callback")
+    assert not is_loopback_callback("https://agent.example.com/callback")
+    assert not is_loopback_callback("http://agent.example.com/callback")
+
+
 def test_discovery_authentication_and_health_routes():
     async def scenario():
         settings = make_settings()
@@ -153,6 +172,8 @@ def test_discovery_authentication_and_health_routes():
             protected = await client.get("/.well-known/oauth-protected-resource/mcp")
             oauth = await client.get("/.well-known/oauth-authorization-server")
             health = await client.get("/health")
+            home = await client.get("/")
+            missing = await client.get("/does-not-exist")
 
         assert unauthorized.status_code == 401
         assert "resource_metadata=" in unauthorized.headers["www-authenticate"]
@@ -160,6 +181,12 @@ def test_discovery_authentication_and_health_routes():
         assert oauth.json()["authorization_endpoint"] == f"{settings.oauth_issuer_url}/authorize"
         assert oauth.json()["registration_endpoint"] == f"{settings.oauth_issuer_url}/register"
         assert health.json() == {"status": "ok", "redis": "up"}
+        assert home.status_code == 200
+        assert settings.resource_url in home.text
+        assert "Cloud operations, in your agent." in home.text
+        assert missing.status_code == 404
+        assert "Lost in the cloud?" in missing.text
+        assert 'href="/"' in missing.text
         await redis.aclose()
 
     asyncio.run(scenario())

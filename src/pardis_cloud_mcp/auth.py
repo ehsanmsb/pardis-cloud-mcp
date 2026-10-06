@@ -31,6 +31,8 @@ from mcp.server.auth.provider import (
 )
 from mcp.shared.auth import OAuthClientInformationFull, OAuthToken
 
+from pardis_cloud_mcp.auth_page import auth_complete_page, is_loopback_callback
+
 logger = logging.getLogger(__name__)
 
 
@@ -241,12 +243,12 @@ class RedisKeycloakOAuthProvider(
             StoredAuthorizationCode(value=outer_code, session_id=session_id),
             self.settings.authorization_code_ttl_seconds,
         )
-        return RedirectResponse(
-            construct_redirect_uri(
-                str(pending.params.redirect_uri), code=outer_code.code, state=pending.params.state
-            ),
-            status_code=302,
+        callback_url = construct_redirect_uri(
+            str(pending.params.redirect_uri), code=outer_code.code, state=pending.params.state
         )
+        if is_loopback_callback(callback_url):
+            return auth_complete_page(callback_url)
+        return RedirectResponse(callback_url, status_code=302)
 
     async def load_authorization_code(
         self, client: OAuthClientInformationFull, authorization_code: str

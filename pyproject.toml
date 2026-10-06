@@ -25,5 +25,8 @@ dev = ["fakeredis>=2.30,<3", "pytest>=8,<10"]
 [project.scripts]
 pardis-cloud-mcp = "pardis_cloud_mcp.server:main"
 
+[tool.setuptools.package-data]
+pardis_cloud_mcp = ["assets/*.html", "assets/*.svg"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]

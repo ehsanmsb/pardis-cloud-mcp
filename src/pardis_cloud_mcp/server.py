@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from typing import Any
 
 from cryptography.fernet import Fernet
 from pydantic import AnyHttpUrl
+from starlette.applications import Starlette
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
@@ -12,6 +14,7 @@ from mcp.server import MCPServer
 from mcp.server.auth.settings import AuthSettings, ClientRegistrationOptions, RevocationOptions
 
 from pardis_cloud_mcp.auth import RedisKeycloakOAuthProvider
+from pardis_cloud_mcp.auth_page import home_page, not_found_page
 from pardis_cloud_mcp.cloud import CloudSettings
 from pardis_cloud_mcp.config import load_config
 from pardis_cloud_mcp.toolset import register_tools
@@ -97,12 +100,23 @@ class Settings:
         return f"{self.oauth_issuer_url}/oauth/keycloak/callback"
 
 
+async def _not_found(_: Request, __: Exception) -> Response:
+    return not_found_page()
+
+
+class PardisMCPServer(MCPServer):
+    def streamable_http_app(self, **kwargs: Any) -> Starlette:
+        app = super().streamable_http_app(**kwargs)
+        app.add_exception_handler(404, _not_found)
+        return app
+
+
 def build_server(
     settings: Settings,
     provider: RedisKeycloakOAuthProvider | None = None,
 ) -> MCPServer:
     oauth_provider = provider or RedisKeycloakOAuthProvider(settings)
-    server = MCPServer(
+    server = PardisMCPServer(
         "Pardis Cloud",
         instructions="Authenticated tools for Pardis Cloud.",
         auth_server_provider=oauth_provider,
@@ -119,6 +133,10 @@ def build_server(
             validate_token_resource=True,
         ),
     )
+
+    @server.custom_route("/", methods=["GET"])
+    async def home(_: Request) -> Response:
+        return home_page(settings.resource_url)
 
     @server.custom_route("/oauth/keycloak/callback", methods=["GET"])
     async def keycloak_callback(request: Request) -> Response:

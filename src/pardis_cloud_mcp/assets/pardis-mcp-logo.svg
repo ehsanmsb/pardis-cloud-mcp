@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 80" fill="none" role="img" aria-label="Pardis Cloud MCP logo">
+  <rect width="80" height="80" fill="#C7000B"/>
+  <path d="M22 50h35a10 10 0 0 0 .4-20 18 18 0 0 0-33.2-3.6A12 12 0 0 0 22 50Z" stroke="#fff" stroke-width="3.3" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M30 50v8m10-8v13m10-13v8" stroke="#fff" stroke-width="2.5" stroke-linecap="round"/>
+  <circle cx="30" cy="61" r="3" fill="#fff"/>
+  <circle cx="40" cy="66" r="3" fill="#fff"/>
+  <circle cx="50" cy="61" r="3" fill="#fff"/>
+</svg>
