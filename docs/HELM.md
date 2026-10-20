@@ -85,7 +85,7 @@ image:
   tag: YOUR_TAG
 
 env:
-  OIDC_ISSUER_URL: https://keycloak.example.com/realms/example
+  OIDC_ISSUER_URL: https://auth.example.com/realms/example
   OIDC_CLIENT_ID: pardis-mcp-backend
   MCP_OAUTH_ISSUER_URL: https://pardis.mcp.example.com
   MCP_RESOURCE_URL: https://pardis.mcp.example.com/mcp
@@ -98,13 +98,19 @@ httpProxy:
       secretName: example-certificates/exxample-com-tls
 ```
 
-Set Keycloak's valid redirect URI to:
+Set the identity provider client's valid redirect URI to:
 
 ```text
-https://pardis.mcp.example.com/oauth/keycloak/callback
+https://pardis.mcp.example.com/oauth/callback
 ```
 
-The public hostname, MCP URLs and Keycloak callback must agree. HTTPProxy routes the entire `/` prefix
+Before upgrading an existing installation, register this new callback URL with the identity provider.
+The previous provider-specific callback route is removed. Keep its redirect allowlist entry until
+old replicas have drained, then remove it after testing a new login. See the
+[callback migration guide](../README.md#upgrading-the-sign-in-callback) for rollback and in-progress logins.
+No client secret or issuer change is required.
+
+The public hostname, MCP URLs and identity provider callback must agree. HTTPProxy routes the entire `/` prefix
 to MCP, including discovery, authorization, token and callback paths. It uses a configurable 300-second
 response/idle timeout for MCP requests; see [Contour timeout semantics](https://projectcontour.io/docs/main/config/api-reference/#timeoutpolicy).
 

@@ -16,7 +16,7 @@ from pardis_cloud_mcp.server import Settings, build_server
 
 def make_settings() -> Settings:
     return Settings(
-        keycloak_issuer_url="https://keycloak.example.com/realms/snapp",
+        keycloak_issuer_url="https://auth.example.com/realms/example",
         keycloak_client_id="pardis-mcp-backend",
         keycloak_client_secret="keycloak-secret",
         oauth_issuer_url="http://127.0.0.1:8000",
@@ -101,17 +101,18 @@ def test_oauth_browser_flow_stores_tokens_encrypted_in_redis():
             assert f"{keycloak_url.scheme}://{keycloak_url.netloc}{keycloak_url.path}" == settings.authorization_endpoint
             assert keycloak_query["client_id"] == [settings.keycloak_client_id]
             assert keycloak_query["redirect_uri"] == [settings.keycloak_redirect_uri]
+            assert settings.keycloak_redirect_uri == f"{settings.oauth_issuer_url}/oauth/callback"
             assert keycloak_query["code_challenge_method"] == ["S256"]
 
             callback = await client.get(
-                "/oauth/keycloak/callback",
+                "/oauth/callback",
                 params={"code": "keycloak-code", "state": keycloak_query["state"][0]},
             )
             assert callback.status_code == 200
             assert "Sign-in complete" in callback.text
             assert "Close this tab" not in callback.text
             assert "Continue to agent" not in callback.text
-            assert "Keycloak</span>" not in callback.text
+            assert "keycloak" not in callback.text.lower()
             assert "Claude" not in callback.text
             assert callback.headers["cache-control"] == "no-store"
             assert "frame-src http://127.0.0.1:8765" in callback.headers["content-security-policy"]
@@ -174,8 +175,13 @@ def test_discovery_authentication_and_health_routes():
             health = await client.get("/health")
             home = await client.get("/")
             missing = await client.get("/does-not-exist")
+            callback = await client.get("/oauth/callback")
+            legacy_callback = await client.get("/oauth/keycloak/callback")
 
         assert unauthorized.status_code == 401
+        assert callback.status_code == 400
+        assert callback.json() == {"error": "missing_state"}
+        assert legacy_callback.status_code == 404
         assert "resource_metadata=" in unauthorized.headers["www-authenticate"]
         assert protected.json()["authorization_servers"] == [f"{settings.oauth_issuer_url}/"]
         assert oauth.json()["authorization_endpoint"] == f"{settings.oauth_issuer_url}/authorize"
@@ -184,7 +190,10 @@ def test_discovery_authentication_and_health_routes():
         assert home.status_code == 200
         assert settings.resource_url in home.text
         assert "Cloud operations, in your agent." in home.text
+        assert "sign in securely with your organization" in home.text
+        assert "keycloak" not in home.text.lower()
         assert missing.status_code == 404
+        assert "keycloak" not in missing.text.lower()
         assert "Lost in the cloud?" in missing.text
         assert 'href="/"' in missing.text
         await redis.aclose()

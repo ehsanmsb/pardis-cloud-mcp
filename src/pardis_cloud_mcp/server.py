@@ -97,7 +97,7 @@ class Settings:
 
     @property
     def keycloak_redirect_uri(self) -> str:
-        return f"{self.oauth_issuer_url}/oauth/keycloak/callback"
+        return f"{self.oauth_issuer_url}/oauth/callback"
 
 
 async def _not_found(_: Request, __: Exception) -> Response:
@@ -138,8 +138,8 @@ def build_server(
     async def home(_: Request) -> Response:
         return home_page(settings.resource_url)
 
-    @server.custom_route("/oauth/keycloak/callback", methods=["GET"])
-    async def keycloak_callback(request: Request) -> Response:
+    @server.custom_route("/oauth/callback", methods=["GET"])
+    async def identity_callback(request: Request) -> Response:
         return await oauth_provider.handle_keycloak_callback(request)
 
     @server.custom_route("/health", methods=["GET"])

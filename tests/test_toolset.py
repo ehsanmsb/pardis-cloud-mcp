@@ -57,7 +57,9 @@ def test_selected_tools_are_the_only_discoverable_and_callable_tools(
 
                 await rpc("initialize", {"protocolVersion": LATEST_PROTOCOL_VERSION,
                     "capabilities": {}, "clientInfo": {"name": "toolset-test", "version": "1"}})
-                assert {t["name"] for t in (await rpc("tools/list"))["tools"]} == expected
+                tools = (await rpc("tools/list"))["tools"]
+                assert {t["name"] for t in tools} == expected
+                assert all("keycloak" not in t.get("description", "").lower() for t in tools)
                 for name in {"whoami", "list_projects", "list_ecs"} - expected:
                     result = await rpc("tools/call", {"name": name, "arguments": {}})
                     assert result["isError"] is True

@@ -123,10 +123,10 @@ class PardisCloud:
         # The claims and token were validated together at login and stored encrypted.
         # ponytail: require fresh login on ID-token expiry; add coordinated Keycloak refresh later.
         if float(session.claims.get("exp", 0)) <= time.time() + 30:
-            raise CloudError("Keycloak ID token expired or is about to expire. Sign in to MCP again.")
+            raise CloudError("Your sign-in has expired or is about to expire. Sign in to MCP again.")
         id_token = session.keycloak_tokens.get("id_token")
         if not isinstance(id_token, str) or not id_token:
-            raise CloudError("Keycloak ID token is unavailable. Sign in to MCP again.")
+            raise CloudError("Your sign-in information is unavailable. Sign in to MCP again.")
         async with httpx.AsyncClient(timeout=15, verify=self._tls, follow_redirects=False) as client:
             response = await client.post(
                 f"{self.settings.iam_endpoint.rstrip('/')}/v3.0/OS-AUTH/id-token/tokens",

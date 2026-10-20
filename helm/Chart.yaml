@@ -1,6 +1,6 @@
 apiVersion: v2
 name: pardis-cloud-mcp
-description: HTTP MCP server with Keycloak authentication and Redis sessions
+description: HTTP MCP server with identity provider sign-in and Redis sessions
 type: application
 version: 0.1.0
 appVersion: "0.1.0"

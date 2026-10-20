@@ -149,7 +149,7 @@ def test_expired_identity_or_credentials_fail_closed(monkeypatch):
         _, provider, cloud = make_cloud()
         calls = mock_iam(monkeypatch, credential_lifetime=-1)
         _, expired = await login(provider, expires_in=-1)
-        with pytest.raises(CloudError, match="ID token expired"):
+        with pytest.raises(CloudError, match="Your sign-in has expired"):
             await cloud.list_ecs(expired.access_token)
         assert calls == []
         _, current = await login(provider, "bob")

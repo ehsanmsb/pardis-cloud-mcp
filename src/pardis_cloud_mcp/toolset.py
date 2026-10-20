@@ -31,7 +31,7 @@ def register_tools(
     cloud = None
 
     def whoami() -> Identity:
-        """Return the identity authenticated through Keycloak."""
+        """Return the signed-in user's identity."""
         token = get_access_token()
         if token is None:
             raise ToolError("Authentication context is unavailable")

@@ -1,8 +1,9 @@
 # Pardis Cloud MCP
 
-An HTTP MCP server with browser login through Keycloak and optional read-only ECS access through Huawei-compatible Pardis APIs. Resource creation is not implemented yet.
+An HTTP MCP server with browser login through your organization's identity provider and optional read-only ECS access through Huawei-compatible Pardis APIs. The current identity provider integration uses Keycloak. Resource creation is not implemented yet.
 
 The [MVP execution plan](docs/MVP_PLAN.md) tracks completed work, remaining authentication fixes, ECS provisioning milestones, and acceptance tests.
+The [ECS implementation plan](docs/ECS_IMPLEMENTATION_PLAN.md) defines the next steps, proposed tool contracts, write-safety gates, and live test procedure. These write tools are not implemented yet.
 
 ## Architecture
 
@@ -34,13 +35,25 @@ Create a dedicated OpenID Connect client, for example `pardis-mcp-backend`:
 - Client authentication: **On** (confidential client)
 - Standard flow: **On**
 - Direct access grants: **Off**
-- Valid redirect URI: `http://127.0.0.1:8000/oauth/keycloak/callback` for local use
+- Valid redirect URI: `http://127.0.0.1:8000/oauth/callback` for local use
 - Web origins: not needed for the server-side code exchange
 - ID token signing algorithm: RS256
 
 Copy the generated secret into `OIDC_CLIENT_SECRET`. In production, use the public HTTPS callback URL instead of localhost and inject secrets through your deployment secret manager.
 
 The Keycloak client does not need the `mcp:tools` client scope. That scope belongs to the outer MCP authorization server implemented by this application.
+
+### Upgrading the sign-in callback
+
+The callback is now `<MCP_OAUTH_ISSUER_URL>/oauth/callback`; the previous provider-specific callback
+route has been removed. Add the new exact URL to the identity provider client's valid redirect
+URIs **before** deploying this version. Keep the previous URI allowed while old replicas drain,
+then remove it after verifying a fresh login. Restart sign-ins already in progress during the upgrade.
+For rollback, allow the previous URI again before restoring the old image.
+
+The `/mcp` endpoint, OAuth discovery URLs, issuer configuration and client secret are unchanged.
+Update every environment's redirect allowlist; changing the image alone does not update the
+identity provider. This is a URL/branding change, not support for additional identity providers.
 
 ## Run locally
 

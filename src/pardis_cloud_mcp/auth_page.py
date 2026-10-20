@@ -85,7 +85,7 @@ def home_page(resource_url: str) -> HTMLResponse:
         eyebrow="Pardis Cloud MCP",
         mark="↗",
         heading="Cloud operations, in your agent.",
-        description="Connect an MCP-compatible agent to the endpoint below. Sign-in starts in your agent and continues through Keycloak.",
+        description="Connect an MCP-compatible agent to the endpoint below. Start in your agent, then sign in securely with your organization.",
         page_content=(
             f'<div class="endpoint"><span>MCP ENDPOINT</span><code>{endpoint}</code></div>'
             '<a href="/health">Check service status ↗</a>'
