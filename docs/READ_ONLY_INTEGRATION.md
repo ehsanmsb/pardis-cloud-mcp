@@ -7,8 +7,12 @@ and `list_projects`/`list_ecs` over authenticated HTTP MCP. ECS uses one configu
 users can choose among the projects IAM reports as accessible to them.
 No ECS create, update, or delete operation is available.
 
-Automated tests use simulated IAM, ECS responses, and Redis. They do not establish live Pardis
-compatibility, real IAM permissions, or container readiness. The live checklist below remains open.
+Progress review, 2026-10-06: the user confirmed successful login and ECS listing through Claude CLI
+against Pardis. This supersedes the earlier unverified-live-access status. The detailed actor,
+denied-user, expiry and deployment checks below are still open unless separately recorded.
+Automated tests use simulated IAM, ECS responses, and Redis; they do not establish those live
+properties or container readiness. Creation is planned in the [MVP plan](MVP_PLAN.md) and
+[ECS implementation plan](ECS_IMPLEMENTATION_PLAN.md), not implemented here.
 
 ## Prerequisites
 
@@ -108,7 +112,11 @@ Coverage includes HTTP MCP initialization/tool discovery/calls, field validation
 cache encryption/TTL, IAM error handling, expiry, revocation during exchange, and SDK signing against
 the configured endpoint. No real cloud request is made by these tests.
 
-## Live acceptance checklist (not yet executed)
+## Live acceptance checklist (positive listing user-confirmed; remaining checks open)
+
+- [x] User reported successful ECS listing through Claude CLI after authentication.
+
+The checks below collect reproducible evidence; the report above does not imply every sub-check passed.
 
 - [ ] Start the backend with verified private configuration and reconnect the MCP client.
 - [ ] Log in and ask: **“Call whoami and list_projects. If I have several projects, ask which one to
@@ -134,8 +142,8 @@ that an unauthorized user is correctly denied; test the negative case separately
 - IAM/ECS 403: check group mapping and project policies. Do not grant administrator permissions as
   a workaround.
 - TLS/network failure: verify the configured API origin, route and CA bundle. Redirects are rejected.
-- IAM malformed response/404: verify API support and endpoint; Huawei compatibility still needs a
-  live check for this deployment/version.
+- IAM malformed response/404: verify API support and endpoint. Read-only access was user-confirmed;
+  new APIs and different deployment versions still require their own compatibility checks.
 - Audit entries record time, issuer/subject, operation, project, outcome and internal correlation ID.
   They do not print raw upstream errors, request bodies, tokens or keys. Protect audit logs as identity
   data. Avoid HTTP/SDK debug logging and Redis value dumps.

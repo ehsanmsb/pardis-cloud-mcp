@@ -1,321 +1,201 @@
 # MVP Execution Plan: Provisioning an ECS Through Prompts and MCP
 
-Baseline review date: 2026-10-04
+Baseline: 2026-10-04. Progress review: 2026-10-06, against commit `d0ca1ec`.
 
-Latest implementation update: 2026-10-05. P1 code and simulated tests are available;
-live Pardis acceptance remains open. See [the read-only runbook](READ_ONLY_INTEGRATION.md).
+This is the status and acceptance reference. See [ECS implementation plan](ECS_IMPLEMENTATION_PLAN.md)
+for ordered engineering steps. This documentation update does not implement or enable writes.
 
-This document is the working reference for MVP development and acceptance. Status reflects the latest review, not the current availability of running services. Update the checklist and evidence after completing each phase.
+Do not record internal domains, real endpoints, personal paths, actual user/project/resource IDs,
+tokens, keys or secrets. Keep configuration and detailed live evidence in private storage.
 
-Do not record internal domains, real service addresses, personal filesystem paths, actual project or user identifiers, secrets, tokens, or access keys in this document. Variable and tool names describe the design only. Keep actual values in private environment configuration.
+## 1. Outcome and scope
 
-## 1. Expected Outcome
+A user logs in through an HTTP MCP client, previews a bounded ECS configuration, approves the write
+tool, and receives the actual state of an ECS created with their Pardis permissions. Success means
+`ACTIVE` and a configuration match in the API and console, not merely a successful create response.
 
-A user signs in through a compatible MCP client, such as Claude CLI, and requests an ECS using a prompt. MCP presents the allowed options and final configuration. After user approval, it provisions the ECS in Pardis Cloud with that user's permissions and reports its actual state.
+> In the test project, plan one demo-vm using the approved small profile and existing network.
+> Show me the final configuration. Create it only after I approve, then report its status.
 
-Example prompt using a fictional resource name:
+Include one region, one designated test project, one approved image, one or two flavors, existing
+VPC/subnet/security group/key pair, one system disk and one ECS per plan. Agree resource/cost limits
+and cleanup ownership before writing. No public IP is needed. SSH is optional; private keys never
+enter prompts or MCP.
 
-> Create an ECS named demo-vm in the test project using Ubuntu and the small profile on the existing network. Show me the final configuration before creating it. After I approve, report its status and IP address.
+Defer new networks/EIPs, bulk/multi-region provisioning, general deletion, storage/Kubernetes/billing
+tools, a new dashboard, automatic upstream Keycloak refresh, and broad multi-client certification.
+Manual inventory-based cleanup is sufficient for MVP.
 
-Success means the ECS appears in both the Pardis API and console with the agreed configuration and an `ACTIVE` status. An initial creation response alone does not mean provisioning has completed successfully.
+## 2. Progress against the previous plan
 
-## 2. Completed Work and Available Evidence
+Implementation, automated tests and live acceptance are separate evidence levels.
 
-| Item | Status | Evidence and verification limits |
-| --- | --- | --- |
-| MCP server over Streamable HTTP | Completed | The server has run over HTTP and its discovery metadata has been checked |
-| Backend connection to Keycloak using a confidential client | Implemented | The backend uses a client ID and secret; the user tested and confirmed the login flow through Claude CLI |
-| Embedded OAuth broker | Implemented | Registration, authorization, callback, token, and revocation endpoints exist; the fixes in Section 3 remain open |
-| Authorization Code and PKCE | Implemented | A simulated flow through MCP token issuance has been tested |
-| Redis session and token storage | Implemented | Sensitive values are encrypted with Fernet; bearer tokens are hashed when used in Redis keys |
-| Separation of MCP and Keycloak tokens | Completed | The MCP client receives an opaque token; Keycloak tokens remain in the backend |
-| `whoami` tool | Implemented and locally tested | Authenticated HTTP tool call is covered by an automated test |
-| Health checks and endpoint protection | Tested | Health checks succeeded with real Redis; unauthenticated MCP requests returned 401 |
-| Client registration and real redirect | Tested | Registration returned 201 and redirection to Keycloak returned 302 |
-| Current automated tests | 21 passing | Includes HTTP MCP calls, project discovery/selection, federation/cache isolation, expiry/revocation, and real SDK signing with simulated network responses; Redis and Keycloak exchange/validation remain simulated |
-| Read-only `list_ecs` integration | Implemented; live verification open | Uses the existing session, IAM federation, encrypted temporary credentials, and the official Huawei SDK with configured endpoints |
-| Dockerfile and Compose | Prepared; final execution unverified | MCP and Redis container definitions exist; the previous build stalled while retrieving the base image |
-| Initial documentation and configuration example | Completed | Setup explicitly loads the private configuration; read-only runbook and optional cloud settings added |
-| Baseline Git changes | Completed | Authentication, deployment, and documentation were committed separately and pushed; private configuration was excluded |
+| Previous phase | Status | Completed evidence | Remaining exit criteria |
+| --- | --- | --- | --- |
+| P0: Environment | Partial | Working private IAM/ECS/IdP configuration evidenced by successful live listing | Write-test resources, limits, quota, authorized/denied users, cleanup owner and target-container connectivity |
+| P1: User-based Pardis access | Positive live path user-confirmed; acceptance partial | User explicitly reported ECS listing through Claude CLI after login; federation, project discovery and SDK integration exist | Sanitized run record, mapped-actor/console comparison and live denied-user/project test |
+| P2: Auth and read-only integration | Partial | Session checks, encrypted user-bound credentials, project selection, fixed HTTPS endpoints, three tools and YAML selection | AUTH-01/02, JWT tests, expiry acceptance, provisioning options and ECS detail tool |
+| P3: Create and track ECS | Not started | No provisioning tools in the current catalog | Immutable plans, approval, guarded creation, duplicate prevention, status and actual ECS verification |
+| P4: Test, deploy and handoff | Packaging implemented; acceptance pending | Docker/Compose, Helm with Redis/ConfigMap/Secret/HTTPProxy, release workflow and guides | Locked image installation, container restart, target OKD smoke test, write acceptance and cleanup |
 
-The user reports that Pardis identity-provider integration with Keycloak and console login are working. This does not yet verify programmatic access from MCP to Pardis.
+Earlier statements that private IAM configuration and *all* live Pardis access were unverified are
+superseded by the user's successful read-only test. This does not prove create permission or
+Pardis compatibility with create/job/idempotency APIs.
 
-Pardis credential exchange and read-only ECS listing are implemented and tested with simulated cloud
-responses. No live Pardis API test or resource-creation test has been completed. ECS provisioning is
-not implemented.
+### Implemented foundation
 
-## 3. Required Fixes Before Enabling Resource Creation
-
-### AUTH-01: Consent for Each MCP Client
-
-Dynamic client registration is enabled, but authorization redirects directly to Keycloak without separate consent for the requesting MCP client. An existing SSO session does not establish consent for a new client.
-
-- [ ] Display the client name, requested access, and redirect destination on the consent page.
-- [ ] Bind consent to the user and client; do not share consent between clients.
-- [ ] Add CSRF protection and bind the authorization/callback flow to the browser session.
-- [ ] Test that a new client cannot obtain tokens through an existing SSO session without consent.
-
-### AUTH-02: Session, Refresh, and Revocation Coordination
-
-The baseline review found a refresh/revocation race that left tokens accepted after session deletion.
-Access-token validation now checks the active session, and the cloud path rechecks it before sending
-the request and before returning results. Full atomic refresh/revocation coordination remains open.
-These checks use simulated Redis and do not modify real sessions.
-
-- [x] Check that the session is active when accepting tokens and before cloud operations (local tests).
-- [ ] Coordinate refresh and revocation using atomic controls or validated session versions.
-- [ ] Define a maximum session lifetime and cap access/refresh token lifetimes accordingly.
-- [ ] Ensure a revoked session cannot regain access through a refresh/revocation race.
-- [ ] Test replay, expiry, and concurrent requests.
-
-### AUTH-03: Keycloak and Cloud Credential Expiry
-
-The current refresh flow renews only MCP tokens and leaves stored Keycloak tokens unchanged. Sessions also have an independent lifetime; renewing an MCP token does not renew the session or Pardis credentials.
-
-- [x] Record and check Keycloak token and Pardis credential expiry.
-- [x] Explicitly require a new login when a fresh ID token is needed; automatic Keycloak refresh is deferred.
-- [ ] Stop cloud operations with an invalid session if Keycloak rejects refresh.
-- [ ] Define logout/revocation behavior: validation points and maximum enforcement delay.
-- [ ] Test expiry transitions without long waits in automated tests.
-
-### TEST-01 and DEPLOY-01: Test Coverage and Reproducible Execution
-
-- [ ] Exercise actual JWT validation in tests: signature, issuer, audience, nonce, and expiry.
-- [x] Test MCP initialization, tool listing, and authenticated `tools/call` (simulated cloud services).
-- [ ] Build the image using locked dependencies matching the tested versions.
-- [ ] Run the container and verify Redis connectivity and state persistence after restart.
-- [x] Correct the setup instructions to load the private configuration file explicitly.
-
-## 4. Delivery Scope
-
-### Included in the MVP
-
-- One region and one test project with controlled access.
-- One valid image and one or two explicitly supported flavors.
-- An existing VPC, subnet, security group, and SSH key pair.
-- One ECS per request, with a specified system disk and agreed resource limits.
-- Option selection, plan preview, user approval, provisioning, and status tracking.
-- Cloud API execution using temporary credentials tied to the authenticated user.
-- Audit records containing actor, project, operation, timestamp, outcome, and created resource, without credentials.
-- Testing through Claude CLI, repeatable setup instructions, and a test-resource cleanup procedure.
-
-### Deferred Until After the MVP
-
-Network creation from scratch, new EIPs, bulk ECS creation, management across all regions, Kubernetes, general storage operations, billing, an administration dashboard, a general-purpose deletion tool, and broad compatibility testing across multiple MCP clients.
-
-A private IP is sufficient for the baseline demo. If SSH access is an acceptance requirement, prepare network access before live testing. Private keys must never enter prompts or tool outputs.
-
-## 5. Target Architecture
-
-```text
-User and MCP client
-    -> Keycloak browser login and consent for the MCP client
-    -> Receive an opaque MCP token
-    -> Call a tool using that token
-    -> Backend retrieves the valid user session
-    -> Use an ID token trusted by Pardis IAM
-    -> Obtain a federated / unscoped token
-    -> Obtain temporary AK + SK + Security Token for the user
-    -> Call the ECS API and track the result
-```
-
-Huawei documents this federation flow. The supported endpoints, API versions, and configuration on Pardis must be verified in P1. API compatibility is an initial integration assumption, not a completed test result.
-
-The Keycloak client used by MCP may differ from the client trusted by the console's identity provider. Verify issuer, audience/client ID, signing key, and group mappings. If needed, configure a dedicated identity provider for MCP programmatic access using the same Keycloak instance.
-
-The `mcp:tools` scope permits MCP access only. ECS creation permissions must come from Pardis IAM and project policies.
-
-Proposed implementation structure:
-
-| Component | Responsibility |
+| Capability | Evidence and limits |
 | --- | --- |
-| Existing authentication layer | Login, consent, sessions, refresh, and revocation |
-| `cloud_auth` module | Exchange identity for temporary credentials and manage expiry, bound to the user and session |
-| `ecs` module | Validate options and call Pardis APIs |
-| MCP tools | Typed inputs and outputs for planning, creation, and status |
-| Redis | Encrypted sessions and credentials, immutable plans, and operation records |
+| Streamable HTTP and embedded OAuth | `server.py`, `auth.py`; real client login reported working |
+| Confidential Keycloak client, Authorization Code + PKCE | Backend owns the secret; ID-token validator checks signature/issuer/audience/nonce/expiry; direct validator tests still needed |
+| Opaque MCP tokens and encrypted Redis sessions | `auth.py`; simulated browser/token tests; Keycloak tokens remain in the backend |
+| Per-user federation and temporary credentials | `cloud.py`; HTTPX for IAM, official Huawei ECS/core SDK for signed ECS calls; no permanent AK/SK fallback |
+| `whoami`, `list_projects`, `list_ecs` | `toolset.py`; simulated project selection and access-boundary tests |
+| YAML toolset selection | `config.py`, `config.yaml`; unknown names fail startup; disabled tools are not callable |
+| Home, 404, authentication completion pages | Packaged, agent-neutral pages; completion page is not client consent |
+| Helm and semantic-release automation | Template/workflow tests exist; configuration alone does not prove successful publication or OKD deployment |
 
-The existing backend is sufficient for the MVP. The initial choice for request signing is the official Huawei SDK with explicit Pardis endpoints and project configuration. Verify compatibility in P1 and limit dependencies to the services required by this MVP.
+Reuse the current backend, Redis and SDK. No separate backend or generic workflow framework is needed.
 
-## 6. Execution Phases and Exit Criteria
+### Evidence baseline
 
-### P0: Prepare the Environment and Required Information
+- Automated suite: 63 tests passed on 2026-10-06, with four Huawei SDK `datetime.utcnow`
+  deprecation warnings. Cloud responses and Redis are simulated. The OAuth flow test substitutes
+  ID-token decoding; it does not establish actual JWT-validator coverage.
+  The planning-time rerun also reported a local pytest cache-write permission warning; no test failed.
+- Live: user confirmed Keycloak login and ECS listing through Claude CLI. Exact live timestamp/version
+  and detailed negative-case results have not been recorded.
+- Live ECS creation, quota-failure acceptance, container-restart acceptance and target OKD runtime
+  acceptance are not established by this review.
+- Source/tests were checked directly. The local code graph is older than the current authentication
+  implementation and is not used as evidence of completion.
 
-Status: Open. Primary owner: Pardis environment owner, supported by the developer.
+## 3. Required fixes before enabling creation
 
-- [ ] Select the test project and region, and agree on test resource/cost limits.
-- [ ] Configure IAM, ECS, and any option-discovery endpoints in private configuration.
-- [ ] Identify the IdP, issuer, audience, and group mappings; verify Programmatic Access.
-- [ ] Provide one authorized user and one user without creation permissions.
-- [ ] Prepare the image, flavors, network, security group, SSH key pair, and required quota.
-- [ ] Verify network and TLS access from the backend environment; use the appropriate trust store for an internal CA.
-- [ ] Assign cleanup ownership and define how test-created resources will be identified.
+### AUTH-01: Client consent and browser binding — open
 
-Exit criterion: Required information is available privately and all demo dependencies are identified. No actual environment values are recorded in this document.
+Dynamic registration currently redirects to Keycloak without separate consent for the requesting
+MCP client. An existing SSO session does not establish consent for a new MCP client.
 
-### P1: Prove Pardis Access Using the User's Identity
+- [ ] Display requesting client, requested access and redirect destination; escape client metadata.
+- [ ] Bind consent to user/client and authorization flow, with browser binding and CSRF protection.
+- [ ] Test existing SSO + new client, rejection, replay and cross-browser callback attempts.
 
-Status: In Progress. Dependency: P0. Primary owner: Developer, with IAM configuration support from the environment owner.
+OAuth consent is separate from approval of an individual `create_ecs` call.
 
-Implementation and simulated tests are complete for the initial read-only path. All live checks below
-remain open; the private cloud configuration is not yet populated. This is not a production rollout.
+### AUTH-02: Session, refresh and revocation coordination — partial
 
-- [ ] Obtain a fresh ID token through the existing MCP login flow.
-- [ ] Test exchanging it for a Pardis federated token and temporary credentials.
-- [ ] Verify the resulting identity and permissions against the expected mapping.
-- [ ] Execute a read-only request, such as listing ECS instances in the test project.
-- [ ] Check behavior for a user without project access; determine the minimum creation policy and network/disk dependencies.
-- [ ] Record status codes, timestamps, and sanitized errors without tokens or credentials.
+- [x] Require a live matching session for tokens and recheck it around cloud calls.
+- [x] Consume authorization codes and refresh tokens with Redis `GETDEL`.
+- [ ] Coordinate session validation, token issuance/indexing and revocation atomically.
+- [ ] Cap access/refresh token lifetimes to the remaining absolute session lifetime.
+- [ ] Test concurrent refresh/revocation, replay and expiry, not only leftover-token rejection.
 
-Exit criterion: Reading ECS instances succeeds with the authenticated user's temporary credentials, and unauthorized access is denied.
+Session TTL is fixed at login (default eight hours). MCP refresh issues MCP tokens but does not
+extend the session. Active-session checks do not prove the whole issuance/revocation sequence atomic.
 
-Decision point: Complete the initial investigation within the first half-day. If it fails, narrow the cause to API support, audience, mapping, permissions, or networking and assign it to the relevant owner. Update the schedule once the blocker is understood. Shared service credentials are not equivalent to user-based access and would require an explicit scope change.
+### AUTH-03: Expiry policy — implemented fallback, acceptance partial
 
-### P2: Complete Authentication and Read-Only Integration
+- [x] Check ID-token expiry before IAM exchange and cloud expiry before credential reuse.
+- [x] Require fresh login when another ID token is needed; automatic Keycloak refresh is deferred.
+- [ ] Verify expiry/re-login in a real client, including recovery of an existing operation.
+- [ ] Record logout/revocation enforcement limits in the handoff.
 
-Status: Open. Dependency: P1 for integration; authentication fixes can proceed while a P1 blocker is being resolved.
+The backend requests 900-second cloud credentials, uses IAM's returned expiry, and caches with a
+30-second margin and remaining-session TTL cap. Cached credentials can outlive the original ID token.
+Keycloak logout is not propagated immediately: no back-channel logout or continuous upstream session
+check exists. Local revocation cannot cancel a request already sent or remotely revoke IAM credentials.
+Do not promise immediate Keycloak-logout enforcement.
 
-- [ ] Complete AUTH-01 through AUTH-03 and their tests.
-- [ ] Securely bind each request's authentication context to that user's session.
-- [ ] Isolate stored credentials by user, session, project, and expiry.
-- [ ] Reject arbitrary endpoints or credentials supplied through model inputs.
-- [ ] Implement supported provisioning options and ECS detail retrieval.
-- [ ] Return understandable authentication, permission, rate-limit, and timeout errors.
+### TEST-01 and DEPLOY-01 — partial
 
-Exit criterion: Read-only tools work through a real MCP client, users cannot use each other's sessions or credentials, and session revocation prevents further access.
+- [x] HTTP initialization/discovery/tool calls, project boundaries, SDK signing and cache-isolation tests.
+- [ ] Actual signed JWT tests: signature, issuer, audience, nonce, required claims and expiry.
+- [x] `uv.lock`, locked CI test installation, Docker/Compose, Helm and release configuration.
+- [ ] Install locked runtime dependencies in Docker: current `pip install .` resolves version ranges
+  independently of `uv.lock`.
+- [ ] Verify image startup, OKD/non-root runtime, Redis connectivity/persistence, health and HTTPS callback.
+- [ ] Verify restart recovery with a stable encryption key and recorded image digest.
 
-### P3: Implement ECS Creation and Status Tracking
+The MVP is private and controlled. Multi-user/public exposure additionally needs registration/OAuth
+abuse controls and operational hardening; a successful demo is not production approval.
 
-Status: Open. Dependency: P2.
+## 4. Ordered delivery and schedule
 
-- [ ] Define tool input/output schemas according to Section 7.
-- [ ] Create immutable, expiring plans bound to the user and project, using valid discovered IDs.
-- [ ] Revalidate permissions and options when executing a plan.
-- [ ] Enable manual approval for write tools in the demo client and test that rejection prevents execution.
-- [ ] Record an operation before submitting the request and atomically prevent duplicate submission of the same plan.
-- [ ] Store returned job/server identifiers and implement bounded, repeatable status checks.
-- [ ] Handle unknown outcomes after timeouts without blindly retrying creation requests.
-- [ ] Record created resources for audit and cleanup; use tags/metadata if supported by the verified API.
+Detailed contracts and tests are in [the implementation plan](ECS_IMPLEMENTATION_PLAN.md).
 
-Exit criterion: An ECS is created through MCP, its configuration is verified, and its actual `ACTIVE` state is reported. Duplicate-submission and unknown-outcome tests also pass.
-
-### P4: Complete Testing, Container Deployment, and Handoff
-
-Status: Open. Dependency: P3.
-
-- [ ] Complete the test matrix in Section 9 and record sanitized evidence.
-- [ ] Complete DEPLOY-01 and keep the encryption key stable across restarts.
-- [ ] Set the public URL and callback for the delivery environment in private configuration; for remote deployment, use TLS and restrict Redis access.
-- [ ] Apply rate limits to registration and OAuth endpoints for multi-user access.
-- [ ] Run tests that do not access the cloud in CI; run cost-incurring cloud tests manually in the test environment.
-- [ ] Complete client setup instructions, example prompts, troubleshooting, and cleanup guidance.
-- [ ] Review changes, create logical commits, and push according to the project owner's approval.
-- [ ] Run the final demo from a fresh environment and clean up test resources.
-
-Exit criterion: Another person can follow the guide to sign in, provision an ECS, and inspect it. The delivered version's limitations are clearly documented.
-
-## 7. MVP Tools and Execution Contract
-
-New tool names are proposals and will be finalized during implementation.
-
-| Tool | Behavior | Main output |
+| Step | Deliverable | Exit gate |
 | --- | --- | --- |
-| `whoami` | Show the authenticated identity; already implemented | Identity and MCP scopes, without credentials |
-| `get_ecs_options` | Return valid, authorized options for the limited demo environment | Images, flavors, network options, and limits |
-| `plan_ecs` | Validate and store a configuration without creating resources | `plan_id`, configuration, plan expiry, and validation errors |
-| `create_ecs` | Execute the stored plan after user approval in the client | `operation_id` and initial status |
-| `get_operation` | Read and update operation status with bounded checks | In progress, succeeded, failed, or unknown |
-| `get_ecs` | Read the actual state of an authorized resource | Identifier, status, IP, and relevant configuration |
+| S0 | Environment and read-only live evidence | Authorized/denied scenarios, private inventory and least-privilege policy agreed |
+| S1 | Auth safety and explicit write enablement | AUTH-01/02 and JWT tests pass; wildcard cannot silently enable create |
+| S2 | `get_ecs_options`, `plan_ecs`, `get_ecs` | Immutable, expiring, user/project-bound plans; zero cloud mutations |
+| S3 | `create_ecs` and operation records | Mock permission/concurrency/unknown-outcome tests and client rejection test pass |
+| S4 | `get_operation` and actual ECS verification | Bounded polling, owner checks, re-login recovery and accurate status |
+| S5 | Controlled live test and deployment handoff | Critical acceptance tests, container/OKD verification and cleanup complete |
 
-Contract rules:
+Read-only options and mocks can proceed while the environment owner prepares permissions. Keep
+real writes disabled until gates pass. `mcp:tools` grants MCP access, not cloud creation;
+a mapped `ecs-readonly` role is not a create permission.
 
-1. `plan_ecs` performs backend validation. It is not a cloud dry run, capacity reservation, or guarantee of success.
-2. A `plan_id` is bound to identity, project, and immutable parameters. Configuration changes require a new plan.
-3. One plan maps to one operation. Repeated calls for that plan return the existing operation. An ECS name alone is not a duplicate-prevention key.
-4. If the response is lost after submission, record an `unknown` outcome and investigate using request, job, or resource identifiers. Do not resubmit creation until the outcome is resolved. Do not claim exactly-once guarantees beyond the API's actual capabilities.
-5. Record `success` only after checking the ECS's actual state and configuration. Ending polling within one call does not mean creation failed; the client can query the same operation again.
-6. Only the authorized owner may read or execute a plan or operation. Enforce project access and cloud permissions in the backend.
-7. For the demo, human approval comes from Claude's tool-execution controls, with auto-approval disabled for write tools. A `confirmed=true` field or possession of a `plan_id` does not prove human approval.
-8. Outputs and logs must not contain tokens, AK/SK, client secrets, encryption keys, or private keys.
+Tentative estimate from this baseline: four working days plus one contingency day, conditional on
+environment readiness and auth review. This is not a delivery guarantee.
 
-## 8. Proposed Schedule
+- Day 1: S0/S1, permissions/resources and authentication/write gating.
+- Day 2: S2, preview through the client and no-write tests.
+- Day 3: S3/S4, failure tests and first approved live creation if gates pass.
+- Day 4: S5, deployment, repeatable demo, evidence and cleanup.
+- Contingency: Pardis API differences, policy, quota, networking, builds or auth issues.
 
-Estimate: Four working days plus one contingency day, conditional on successful P1 validation and available access. This is not a firm delivery commitment before federation is tested.
+Reduce image/flavor variety if time is short, not owner checks, approval, duplicate prevention or
+accurate unknown-outcome reporting.
 
-| Day | Focus | Demonstrable result |
+## 5. Acceptance matrix
+
+Record date, code/image version and sanitized result per live run. Keep identifiers/raw logs private.
+Partial automated coverage does not close a live acceptance test.
+
+| ID | Expected result | Current evidence / remaining work |
 | --- | --- | --- |
-| 1 | P0, proof of P1, and initial authentication fixes | A real read-only request using the user's identity, with permission checks verified |
-| 2 | Complete P2 and authentication testing | Provisioning options and ECS reads through MCP with user isolation |
-| 3 | P3 | Create one ECS and track it to `ACTIVE`; prevent duplicate submission |
-| 4 | P4 | Claude demo, runnable container, tests, and handoff guide |
-| 5, contingency | Resolve API, IAM, quota, networking, or build issues | Repeat the demo and close remaining acceptance items |
+| T01 | Real login, correct identity/project and ECS list | Login/list user-confirmed; mapped-actor and console comparison record open |
+| T02 | Invalid JWT/signature/issuer/audience/nonce/expiry rejected | Validator exists; direct test matrix open |
+| T03 | New client with existing SSO cannot bypass consent | AUTH-01 open |
+| T04 | Code/refresh replay and concurrent revocation cannot restore access | Sequential consumption/session checks present; concurrency tests open |
+| T05 | Session/ID/cloud expiry has clear re-login behavior | Simulated coverage partial; live transition and operation recovery open |
+| T06 | Denied user/project cannot create | Read-only boundaries simulated; live denial/write tests open |
+| T07 | Another user cannot inspect/execute a plan or operation | Open |
+| T08 | Reject write in client: zero cloud create requests | Open; auto-approval must be off |
+| T09 | Bad resource/quota/permission errors without false success | Open; inventory any partial resources |
+| T10 | Repeated/concurrent execution of one plan gives one operation | Open; include restart/Redis failure |
+| T11 | Lost response after POST yields unknown, not blind resubmission | Open; reconcile before new create |
+| T12 | Prompt creates one matching ACTIVE ECS visible in console | Open |
+| T13 | Container restart preserves trackable operation in Redis | Open; preserve encryption key, reject expired sessions |
+| T14 | No credentials/private keys in outputs/logs | Read-only checks exist; expand to writes/SDK errors and live inspection |
+| T15 | Cleanup removes only test-created resources | Open; check disks/ports, preserve shared resources |
+| T16 | Create disabled by default, including wildcard configurations | Open |
+| T17 | Locked image and target deployment pass smoke tests | Packaging exists; DEPLOY-01 open |
 
-If time is constrained, reduce image/flavor variety and the number of tested clients. Do not remove authorization checks, duplicate prevention, or accurate outcome reporting from acceptance criteria.
+Run mocks in CI. Live tests are manual, permission-scoped and cost-bounded. Simulate quota failures;
+do not deliberately exhaust real quota without a separately approved safe test.
 
-## 9. Acceptance Test Matrix
+## 6. Definition of done and next action
 
-All tests below remain open until execution evidence is recorded. The two existing tests do not replace this matrix.
+- [ ] Identity, permissions, consent, session isolation and required auth tests verified.
+- [ ] Preview and tested manual approval produce one tracked operation per plan.
+- [ ] Real ECS configuration and ACTIVE state verified through API and console.
+- [ ] Duplicate calls, expiry, permissions and uncertain outcomes behave safely.
+- [ ] Container/Redis restart and target deployment verified; demo/cleanup instructions usable.
+- [ ] Sanitized evidence/limitations recorded; no critical write-path defects remain.
 
-| ID | Test | Expected result | Status |
-| --- | --- | --- | --- |
-| T01 | Sign in through a real client and call `whoami` | Correct user identity and successful authenticated tool call | Open |
-| T02 | Invalid/expired ID token, bad signature, or incorrect audience/nonce | Authentication rejected | Open |
-| T03 | New MCP client with an existing SSO session | No token issued without client consent | Open |
-| T04 | Code/refresh replay and concurrent refresh/revocation | No access issued or accepted after revocation | Open |
-| T05 | Session, Keycloak token, or cloud credential expiry | Valid refresh or reauthentication required; no false success | Open |
-| T06 | User without creation permissions or unauthorized project | No resource created | Open |
-| T07 | A second user attempts to use another user's plan/operation | Access denied | Open |
-| T08 | User rejects creation-tool execution in the client | No creation request submitted | Open |
-| T09 | Insufficient quota, invalid image/flavor, or incompatible network | Clear error; any partial resources inspected and recorded | Open |
-| T10 | Repeat the same plan, including concurrent calls | One operation and no duplicate creation submission | Open |
-| T11 | Response lost after cloud request submission | Unknown state investigated; no automatic repeated POST | Open |
-| T12 | Provision a real ECS from a prompt | Agreed configuration and `ACTIVE` state verified in API and console | Open |
-| T13 | Restart the container with persistent Redis | Existing operation remains trackable; a valid session remains usable | Open |
-| T14 | Inspect tool outputs and logs | No credential disclosure | Open |
-| T15 | Clean up after live testing | Created resources removed according to the recorded inventory; leftover disks/ports checked | Open |
+**Next: S0.** Privately select test project, image, small flavor, disk limit, network, security group
+and SSH key pair; confirm minimum create permissions and quota with the environment owner.
+Repeat positive/negative read-only checks. Then implement S1, not an unguarded create tool.
 
-Run mock and local integration tests in CI. Run live cloud tests manually, with resource limits, in the test environment. MVP cleanup can use the console or a script restricted to that test's resource identifiers. Existing shared resources must not be targeted for cleanup.
+## 7. Decision log
 
-## 10. Definition of Done
-
-- [ ] Login and tool invocation through a real MCP client are verified.
-- [ ] Pardis credentials are temporary and tied to the user; user isolation and project boundaries are tested.
-- [ ] The user sees the final configuration and approves execution of the creation tool.
-- [ ] A real ECS is provisioned with the agreed configuration and its state is read from the API.
-- [ ] Repeated requests and network failures do not cause uncontrolled creation of extra resources.
-- [ ] Permission, expiry, and quota errors are understandable and traceable.
-- [ ] Critical acceptance tests pass and no critical defects remain in the write path.
-- [ ] Container execution, persistent Redis, setup instructions, and cleanup are verified.
-- [ ] Demo evidence, limitations, and the delivered version are recorded; sensitive data is absent from documentation and Git.
-
-## 11. Progress and Decision Log
-
-Allowed statuses: Open, In Progress, Blocked, and Done. Mark a phase Done only when its exit criterion is met. Label unverified conclusions as "Needs verification."
-
-| Phase | Current status | Evidence / blocker | Next action |
-| --- | --- | --- | --- |
-| HTTP, Keycloak, and Redis foundation | Done with outstanding fixes | Evidence in Section 2; Section 3 fixes remain open | Complete P0 and start P1 |
-| P0 | Open | Actual environment values are excluded from this document | Complete private configuration and prepare existing resources |
-| P1 | In Progress | Federation, project discovery and ECS list code implemented; 21 local tests pass; no live cloud verification | Resolve the IAM endpoint, complete private configuration, reconnect, and run allowed/denied user tests |
-| P2 | Open | Authentication fixes and cloud integration remain | Execute the checklist after proving P1 |
-| P3 | Open | Only read-only listing exists; provisioning tools do not exist yet | Implement plan/create/status after P2 |
-| P4 | Open | Live cloud tests and final container execution are unverified | Execute the test matrix and complete handoff after P3 |
-
-For each significant run, record the date, code version, test ID, result, and sanitized notes. Keep actual resource identifiers, raw logs, and credentials in private evidence storage. Explicitly record any scope change or exception to an acceptance criterion.
-
-Verification on 2026-10-05, uncommitted read-only integration: 21 tests passed using simulated services,
-including HTTP tool calls and the installed SDK's request signing. Four deprecation warnings come from
-the SDK's use of `datetime.utcnow`; they do not indicate failed tests. No cloud resources were accessed
-or changed, no private configuration was changed, and no commit or push was performed for this phase.
-
-Next executable step: Populate the verified private cloud configuration and prove P1 by reading ECS
-instances using the signed-in user's temporary credentials, then verifying denial for an unauthorized user.
-
-Follow-up on 2026-10-05: `PARDIS_PROJECT_ID` is now optional. `list_projects` discovers enabled
-projects through the user's unscoped IAM token; `list_ecs` accepts an accessible project ID, uses
-the optional configured default, or auto-selects the sole accessible project. The ECS endpoint remains
-fixed to the deployment region. Tests cover zero/one/multiple projects and rejection of unknown IDs.
-The local HTTP service was added to the user's Claude CLI configuration without secrets. An unauthenticated
-ECS endpoint probe received HTTP 401, confirming DNS/TLS reachability. The documented IAM hostname
-appears incomplete and the corrected candidate did not resolve; no token was sent to that candidate.
-Live federation and ECS listing remain unverified pending a confirmed IAM API endpoint.
+| Date | Decision / evidence |
+| --- | --- |
+| 2026-10-04 | Initial bounded per-user ECS MVP plan established |
+| 2026-10-05 | Read-only federation/project selection and simulated SDK tests added; default project optional |
+| 2026-10-06 review | User-confirmed ECS listing supersedes earlier IAM/read-only blocker |
+| 2026-10-06 review | Toolset, Helm/release and UI work recognized; write tools remain unimplemented |
+| 2026-10-06 planning | Reuse backend/Redis/SDK; operator-approved options first, explicit write gate, manual cleanup; documentation only |
