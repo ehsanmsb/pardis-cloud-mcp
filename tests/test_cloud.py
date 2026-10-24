@@ -2,6 +2,7 @@ import asyncio
 import json
 import logging
 import time
+from urllib.parse import parse_qs, urlsplit
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 
@@ -90,8 +91,9 @@ def test_exchange_cache_isolation_encryption_and_revocation(monkeypatch, caplog)
         calls = mock_iam(monkeypatch)
         observed = []
 
-        def fake_ecs(credentials, project_id, limit, marker):
+        def fake_ecs(credentials, project_id, limit, marker, enterprise_project_id):
             assert project_id == PROJECT
+            assert enterprise_project_id == "all_granted_eps"
             observed.append(credentials.access)
             assert credentials.secret.startswith("private-sk-")
             return [EcsSummary(id="server-1", name="demo", status="ACTIVE")]
@@ -186,13 +188,19 @@ def test_configuration_is_explicit_and_https_only(monkeypatch):
             CloudSettings(endpoint, "https://ecs.example.com", PROJECT, "mcp-idp")
 
 
-def test_mcp_http_initialization_discovery_tool_call_and_revocation(monkeypatch):
+@pytest.mark.parametrize("enterprise_only", [False, True])
+def test_mcp_http_initialization_discovery_tool_call_and_revocation(monkeypatch, enterprise_only):
     async def scenario():
         settings, provider, cloud = make_cloud()
-        calls = mock_iam(monkeypatch)
-        monkeypatch.setattr(PardisCloud, "_list_servers", lambda *args: [
-            EcsSummary(id="server-1", name="demo", status="ACTIVE"),
-        ])
+        calls = mock_iam(monkeypatch, projects=[] if enterprise_only else None)
+        selected = []
+
+        def fake_ecs(_cloud, credentials, project_id, limit, marker, enterprise_project_id):
+            selected.append(enterprise_project_id)
+            assert project_id == PROJECT
+            return [EcsSummary(id="server-1", name="demo", status="ACTIVE")]
+
+        monkeypatch.setattr(PardisCloud, "_list_servers", fake_ecs)
         _, tokens = await login(provider)
         app = build_server(settings, provider).streamable_http_app(json_response=True, stateless_http=True)
         async with app.router.lifespan_context(app):
@@ -211,13 +219,26 @@ def test_mcp_http_initialization_discovery_tool_call_and_revocation(monkeypatch)
                 tools = (await rpc("tools/list")).json()["result"]["tools"]
                 tool = next(t for t in tools if t["name"] == "list_ecs")
                 assert tool["annotations"]["readOnlyHint"] is True
-                assert set(tool["inputSchema"]["properties"]) == {"limit", "marker", "project_id"}
+                assert set(tool["inputSchema"]["properties"]) == {"limit", "marker", "project_id", "enterprise_project_id"}
                 assert any(t["name"] == "list_projects" for t in tools)
+                assert "empty" in next(t for t in tools if t["name"] == "list_projects")["description"]
                 identity = (await rpc("tools/call", {"name": "whoami"})).json()["result"]
                 assert identity["structuredContent"]["subject"] == "alice"
                 result = (await rpc("tools/call", {"name": "list_ecs", "arguments": {"limit": 1}})).json()["result"]
                 assert not result.get("isError")
                 assert result["structuredContent"]["servers"][0]["id"] == "server-1"
+                assert result["structuredContent"]["enterprise_project_id"] == "all_granted_eps"
+                assert selected == ["all_granted_eps"]
+                filtered = (await rpc("tools/call", {"name": "list_ecs", "arguments": {
+                    "enterprise_project_id": "0",
+                }})).json()["result"]
+                assert not filtered.get("isError")
+                assert selected == ["all_granted_eps", "0"]
+                bad_scope = (await rpc("tools/call", {"name": "list_ecs", "arguments": {
+                    "enterprise_project_id": "../marketing",
+                }})).json()["result"]
+                assert bad_scope["isError"]
+                assert selected == ["all_granted_eps", "0"]
                 assert "private-" not in json.dumps(result)
                 invalid = (await rpc("tools/call", {"name": "list_ecs", "arguments": {"limit": 0}})).json()["result"]
                 assert invalid["isError"]
@@ -231,7 +252,8 @@ def test_mcp_http_initialization_discovery_tool_call_and_revocation(monkeypatch)
 
 
 @pytest.mark.parametrize("status", [200, 401, 403, 500])
-def test_huawei_sdk_signs_only_configured_endpoint(monkeypatch, status):
+@pytest.mark.parametrize("enterprise_project_id", ["all_granted_eps", "0", "12345678-1234-1234-1234-123456789abc"])
+def test_huawei_sdk_signs_only_configured_endpoint(monkeypatch, status, enterprise_project_id):
     import requests
     from pardis_cloud_mcp.cloud import CloudCredentials
 
@@ -244,6 +266,9 @@ def test_huawei_sdk_signs_only_configured_endpoint(monkeypatch, status):
         calls.append(request)
         assert request.method == "GET"
         assert request.url.startswith(f"https://ecs.cloud.example.com/v1/{PROJECT}/cloudservers/detail?")
+        assert parse_qs(urlsplit(request.url).query) == {
+            "limit": ["25"], "marker": ["previous-server"], "enterprise_project_id": [enterprise_project_id],
+        }
         assert request.headers["X-Security-Token"] == "test-security-token"
         assert request.headers["Authorization"].startswith("SDK-HMAC-SHA256")
         assert kwargs.get("verify", True) is not False
@@ -260,11 +285,11 @@ def test_huawei_sdk_signs_only_configured_endpoint(monkeypatch, status):
 
     monkeypatch.setattr(requests.Session, "send", send)
     if status == 200:
-        result = cloud._list_servers(credentials, PROJECT, 25, "previous-server")
+        result = cloud._list_servers(credentials, PROJECT, 25, "previous-server", enterprise_project_id)
         assert result == [EcsSummary(id="server-1", name="demo", status="ACTIVE")]
     else:
         with pytest.raises(CloudError) as error:
-            cloud._list_servers(credentials, PROJECT, 25, "previous-server")
+            cloud._list_servers(credentials, PROJECT, 25, "previous-server", enterprise_project_id)
         assert "private-" not in str(error.value)
         if status == 403:
             assert "access denied" in str(error.value)
@@ -315,7 +340,7 @@ def test_project_discovery_selection_and_access_boundary(monkeypatch, project_co
                     for char in ["a", "b"][:project_count]]
         mock_iam(monkeypatch, projects=projects)
         selected = []
-        def fake_ecs(credentials, project_id, limit, marker):
+        def fake_ecs(credentials, project_id, limit, marker, enterprise_project_id):
             selected.append(project_id)
             return []
         monkeypatch.setattr(cloud, "_list_servers", fake_ecs)
@@ -323,6 +348,9 @@ def test_project_discovery_selection_and_access_boundary(monkeypatch, project_co
         assert [p.id for p in await cloud.list_projects(tokens.access_token)] == [p["id"] for p in projects]
         if project_count == 1:
             assert (await cloud.list_ecs(tokens.access_token)).project_id == PROJECT
+        elif project_count == 0:
+            with pytest.raises(CloudError, match="configure PARDIS_PROJECT_ID"):
+                await cloud.list_ecs(tokens.access_token)
         else:
             with pytest.raises(CloudError, match="select a project_id"):
                 await cloud.list_ecs(tokens.access_token)
@@ -333,4 +361,66 @@ def test_project_discovery_selection_and_access_boundary(monkeypatch, project_co
             await cloud.list_ecs(tokens.access_token, project_id="f" * 32)
         assert len(selected) == before
         await provider.redis.aclose()
+    asyncio.run(scenario())
+
+
+def test_enterprise_only_users_use_configured_route_and_their_own_credentials(monkeypatch, caplog):
+    async def scenario():
+        _, provider, cloud = make_cloud()
+        mock_iam(monkeypatch, projects=[])
+        hr = "11111111-1111-1111-1111-111111111111"
+        marketing = "22222222-2222-2222-2222-222222222222"
+        calls = []
+
+        def fake_ecs(credentials, project_id, limit, marker, enterprise_project_id):
+            calls.append((credentials.user_id, project_id, enterprise_project_id, marker))
+            assert credentials.access == f"private-ak-{credentials.user_id.removeprefix('cloud-')}"
+            allowed = hr if credentials.user_id == "cloud-alice" else marketing
+            if enterprise_project_id not in ("all_granted_eps", allowed):
+                raise CloudError("ECS: access denied.", 403)
+            return [EcsSummary(id=allowed, name="team-server", status="ACTIVE")]
+
+        monkeypatch.setattr(cloud, "_list_servers", fake_ecs)
+        caplog.set_level(logging.INFO, logger="pardis_cloud_mcp.cloud")
+        session, alice = await login(provider)
+        _, bob = await login(provider, "bob")
+        assert await cloud.list_projects(alice.access_token) == []
+        assert (await cloud.list_ecs(alice.access_token)).servers[0].id == hr
+        assert (await cloud.list_ecs(bob.access_token)).servers[0].id == marketing
+        page = await cloud.list_ecs(alice.access_token, limit=1, project_id=PROJECT, enterprise_project_id=hr)
+        assert page.enterprise_project_id == hr
+        assert page.next_marker == hr
+        await cloud.list_ecs(alice.access_token, marker=page.next_marker, enterprise_project_id=hr)
+        assert calls[-1] == ("cloud-alice", PROJECT, hr, hr)
+        with pytest.raises(CloudError, match="access denied"):
+            await cloud.list_ecs(alice.access_token, enterprise_project_id=marketing)
+        assert not await provider.redis.exists(cloud._cache_key(session))
+        before = len(calls)
+        with pytest.raises(CloudError, match="not in this user's"):
+            await cloud.list_ecs(alice.access_token, project_id="b" * 32)
+        assert len(calls) == before
+        assert '"enterprise_project_id"' in caplog.text
+        assert "private-" not in caplog.text
+        await provider.redis.aclose()
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("arguments", [
+    {"project_id": "../other"},
+    {"enterprise_project_id": "hr"},
+    {"enterprise_project_id": "all"},
+    {"enterprise_project_id": ""},
+    {"enterprise_project_id": "0&limit=1000"},
+])
+def test_invalid_cloud_scope_is_rejected_before_iam(monkeypatch, arguments):
+    async def scenario():
+        _, provider, cloud = make_cloud()
+        calls = mock_iam(monkeypatch)
+        _, tokens = await login(provider)
+        with pytest.raises(CloudError):
+            await cloud.list_ecs(tokens.access_token, **arguments)
+        assert calls == []
+        await provider.redis.aclose()
+
     asyncio.run(scenario())

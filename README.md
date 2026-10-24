@@ -95,10 +95,18 @@ Set the IAM endpoint, ECS endpoint and IdP ID in the private `.env` to make `lis
 For authentication-only mode, select only `whoami` in `config.yaml` and leave the cloud settings empty.
 Selecting cloud tools without their configuration, or providing partial cloud configuration, fails at startup.
 
-`PARDIS_PROJECT_ID` is an optional default, not a permission grant. Projects are discovered using
-the signed-in user's federated token. If there is exactly one accessible project it is selected
-automatically; otherwise choose an ID returned by `list_projects`. ECS uses the configured regional
-endpoint, so choose a project in that region. IAM still checks the actual operation permissions.
+`PARDIS_PROJECT_ID` is an operator-configured regional IAM project route, not a permission grant
+or an Enterprise Project ID. Set it for enterprise-project-only users: IAM project discovery can
+be empty even when they can access team ECSs. The configured route is usable without appearing in
+discovery. Other caller-selected project IDs must still appear in `list_projects`; without a
+configured default, a sole discovered project is selected automatically. The route must match
+the configured regional ECS endpoint. IAM authorizes every ECS call with the user's credentials.
+
+`list_ecs` sends `enterprise_project_id=all_granted_eps` by default to query the user's granted
+enterprise projects. Pass a specific Enterprise Project ID (or `0` for default) to narrow the query.
+This is a cloud-side selector, not a permission grant. Keep the same project and enterprise-project
+selector when following `next_marker`. `list_projects` lists IAM projects, not enterprise projects,
+and does not insert the configured route into its results or claim that it is authorized.
 
 The backend exchanges the user's Keycloak ID token for an unscoped IAM token, obtains temporary
 AK/SK/security-token credentials, and calls the ECS API using the official Huawei SDK. The agent
@@ -137,7 +145,8 @@ now comes exclusively from YAML, and startup rejects those old variables to prev
 - Disabled tools are neither advertised by `tools/list` nor callable through `tools/call`.
   Selection applies to the whole deployment; authentication and IAM permissions still apply to each user.
 - `list_ecs` can run without exposing `list_projects` if the caller already knows an accessible project ID,
-  a default is configured, or there is exactly one accessible project. Internal project authorization remains active.
+  an operator-configured regional default exists, or there is exactly one discovered project.
+  The configured route does not require discovery membership; cloud authorization always applies.
 
 Restart the local server after editing `config.yaml`. Docker Compose mounts that file read-only at
 `/app/config.yaml`; run `docker compose up -d --force-recreate mcp` after changes. A standalone image
@@ -194,7 +203,7 @@ move those release tags. See [the release guide](docs/RELEASE.md) for setup, exa
 | `MCP_CONFIG_FILE` | no | YAML configuration path; defaults to `config.yaml` relative to the working directory |
 | `PARDIS_IAM_ENDPOINT` | for cloud tools | Verified HTTPS IAM API origin |
 | `PARDIS_ECS_ENDPOINT` | for cloud tools | Verified HTTPS ECS API origin |
-| `PARDIS_PROJECT_ID` | no | Optional default project ID; must belong to the user's accessible projects |
+| `PARDIS_PROJECT_ID` | for enterprise-only access | Regional IAM project ID (32 hex characters); operator-approved route even if discovery is empty, never an Enterprise Project ID |
 | `PARDIS_IDP_ID` | for cloud tools | Programmatic OIDC identity provider trusting the MCP client |
 | `PARDIS_CA_BUNDLE` | no | Optional PEM CA bundle used for both cloud services |
 

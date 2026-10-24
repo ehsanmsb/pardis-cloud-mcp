@@ -34,6 +34,8 @@ env:
   PARDIS_IAM_ENDPOINT: ""
   PARDIS_ECS_ENDPOINT: ""
   PARDIS_IDP_ID: ""
+  # Regional IAM project ID, not an Enterprise Project ID. Set for enterprise-only users.
+  # Allows routing when IAM discovery is empty; each user's cloud permissions still apply.
   PARDIS_PROJECT_ID: ""
   PARDIS_CA_BUNDLE: ""
 

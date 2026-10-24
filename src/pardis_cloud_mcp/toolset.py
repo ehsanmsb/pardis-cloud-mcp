@@ -10,7 +10,7 @@ from mcp_types import ToolAnnotations
 from pydantic import BaseModel, Field
 
 from pardis_cloud_mcp.auth import RedisKeycloakOAuthProvider
-from pardis_cloud_mcp.cloud import CloudError, CloudProject, CloudSettings, EcsPage, PardisCloud
+from pardis_cloud_mcp.cloud import ENTERPRISE_PROJECT_PATTERN, CloudError, CloudProject, CloudSettings, EcsPage, PardisCloud
 
 
 class Identity(BaseModel):
@@ -42,7 +42,7 @@ def register_tools(
         )
 
     async def list_projects() -> list[CloudProject]:
-        """List IAM projects accessible to the signed-in user. ECS operations use this deployment's configured regional endpoint; choose a project in that region."""
+        """Discover regional IAM projects, not enterprise projects. An empty list does not prove lack of ECS access: enterprise-project-only users should call list_ecs with the deployment's configured default. If no default is configured, ask the operator to set PARDIS_PROJECT_ID; supplying an arbitrary project ID will not bypass discovery."""
         token = get_access_token()
         if token is None or cloud is None:
             raise ToolError("Cloud authentication context is unavailable")
@@ -55,13 +55,14 @@ def register_tools(
         limit: Annotated[int, Field(ge=1, le=100)] = 25,
         marker: Annotated[str | None, Field(pattern=r"^[A-Za-z0-9-]{1,128}$")] = None,
         project_id: Annotated[str | None, Field(pattern=r"^[a-fA-F0-9]{32}$")] = None,
+        enterprise_project_id: Annotated[str, Field(pattern=ENTERPRISE_PROJECT_PATTERN)] = "all_granted_eps",
     ) -> EcsPage:
-        """List one page of ECS instances using the signed-in user's permissions and the configured regional endpoint. Choose project_id from list_projects; if omitted, use the configured default or the sole accessible project. Pass next_marker to fetch another page. No resources are changed."""
+        """List one page of ECSs using the signed-in user's permissions. Omit project_id to use the configured regional IAM project even when list_projects is empty, or the sole discovered project. Other project IDs must be discovered. enterprise_project_id defaults to all_granted_eps (all enterprise projects granted to this user); use a specific enterprise project ID or 0 for default to narrow the query. It never grants access. Keep both project selections unchanged when passing next_marker. No resources are changed."""
         token = get_access_token()
         if token is None or cloud is None:
             raise ToolError("Cloud authentication context is unavailable")
         try:
-            return await cloud.list_ecs(token.token, limit, marker, project_id)
+            return await cloud.list_ecs(token.token, limit, marker, project_id, enterprise_project_id)
         except CloudError as exc:
             raise ToolError(str(exc)) from None
 

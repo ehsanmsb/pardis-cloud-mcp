@@ -21,6 +21,8 @@ from pardis_cloud_mcp.auth import RedisKeycloakOAuthProvider, UserSession
 
 logger = logging.getLogger(__name__)
 
+ENTERPRISE_PROJECT_PATTERN = r"^(?:all_granted_eps|0|[a-fA-F0-9]{32}|[a-fA-F0-9]{8}(?:-[a-fA-F0-9]{4}){3}-[a-fA-F0-9]{12})$"
+
 
 class CloudError(Exception):
     """Safe, fixed messages only; never include upstream bodies or credentials."""
@@ -86,6 +88,7 @@ class EcsSummary(BaseModel):
 
 class EcsPage(BaseModel):
     project_id: str
+    enterprise_project_id: str = "all_granted_eps"
     cloud_user_id: str
     cloud_user_name: str
     servers: list[EcsSummary]
@@ -199,7 +202,8 @@ class PardisCloud:
         await self.provider._save_token(key, credentials, session.session_id, ttl)
         return credentials
 
-    def _list_servers(self, credentials: CloudCredentials, project_id: str, limit: int, marker: str | None) -> list[EcsSummary]:
+    def _list_servers(self, credentials: CloudCredentials, project_id: str, limit: int, marker: str | None,
+                      enterprise_project_id: str = "all_granted_eps") -> list[EcsSummary]:
         # Import only when cloud integration is used; authentication-only mode stays independent.
         from huaweicloudsdkcore.auth.credentials import BasicCredentials
         from huaweicloudsdkcore.exceptions.exceptions import ClientRequestException, SdkException
@@ -213,7 +217,9 @@ class PardisCloud:
         client = (EcsClient.new_builder().with_http_config(config).with_credentials(auth)
                   .with_endpoint(self.settings.ecs_endpoint.rstrip('/')).build())
         try:
-            response = client.list_servers_details(ListServersDetailsRequest(limit=limit, marker=marker))
+            response = client.list_servers_details(ListServersDetailsRequest(
+                limit=limit, marker=marker, enterprise_project_id=enterprise_project_id,
+            ))
             return [EcsSummary(id=item.id, name=item.name, status=item.status) for item in response.servers]
         except ClientRequestException as exc:
             raise _http_error("ECS", exc.status_code) from None
@@ -237,9 +243,14 @@ class PardisCloud:
             raise CloudError("IAM returned an invalid response.") from None
 
     async def list_ecs(self, access_token: str, limit: int = 25, marker: str | None = None,
-                       project_id: str | None = None) -> EcsPage:
+                       project_id: str | None = None,
+                       enterprise_project_id: str = "all_granted_eps") -> EcsPage:
         if not 1 <= limit <= 100 or (marker is not None and not re.fullmatch(r"[A-Za-z0-9-]{1,128}", marker)):
             raise CloudError("Use a limit of 1 to 100 and a valid server ID as the pagination marker.")
+        if project_id is not None and not re.fullmatch(r"[a-fA-F0-9]{32}", project_id):
+            raise CloudError("Use a 32-character hexadecimal regional IAM project_id, not an enterprise project ID.")
+        if not re.fullmatch(ENTERPRISE_PROJECT_PATTERN, enterprise_project_id):
+            raise CloudError("Use an enterprise project ID, 0 for default, or all_granted_eps.")
         audit_id = str(uuid.uuid4())
         session = await self.provider.session_for_access_token(access_token)
         if session is None:
@@ -249,19 +260,26 @@ class PardisCloud:
             credentials = await self._credentials(session)
             project_id = project_id or self.settings.project_id
             if project_id is None:
+                if not credentials.projects:
+                    raise CloudError("IAM project discovery is empty; enterprise-project-only users may still have ECS access. Ask the operator to configure PARDIS_PROJECT_ID with the regional IAM project ID, then retry list_ecs. Do not grant broader IAM permissions.")
                 if len(credentials.projects) != 1:
                     raise CloudError("Call list_projects and select a project_id explicitly; there is not exactly one accessible project.")
                 project_id = credentials.projects[0].id
-            if project_id not in {p.id for p in credentials.projects}:
+            # Discovery does not necessarily include enterprise-project-only grants.
+            # Only the operator-configured regional route may bypass discovery;
+            # ECS still authorizes every call with this user's own credentials.
+            if project_id != self.settings.project_id and project_id not in {p.id for p in credentials.projects}:
                 raise CloudError("The selected project is not in this user's accessible project list.")
             if await self.provider.session_for_access_token(access_token) is None:
                 raise CloudError("MCP session was revoked or expired. Sign in again.")
-            servers = await asyncio.to_thread(self._list_servers, credentials, project_id, limit, marker)
+            servers = await asyncio.to_thread(
+                self._list_servers, credentials, project_id, limit, marker, enterprise_project_id,
+            )
             if await self.provider.session_for_access_token(access_token) is None:
                 raise CloudError("MCP session was revoked or expired. Sign in again.")
             outcome = "succeeded"
             return EcsPage(
-                project_id=project_id, cloud_user_id=credentials.user_id,
+                project_id=project_id, enterprise_project_id=enterprise_project_id, cloud_user_id=credentials.user_id,
                 cloud_user_name=credentials.user_name, servers=servers,
                 next_marker=servers[-1].id if len(servers) == limit else None, audit_id=audit_id,
             )
@@ -278,4 +296,5 @@ class PardisCloud:
                 "audit_id": audit_id, "timestamp": datetime.now(timezone.utc).isoformat(),
                 "operation": "list_ecs", "outcome": outcome, "subject": session.subject,
                 "issuer": session.claims.get("iss"), "project_id": project_id,
+                "enterprise_project_id": enterprise_project_id,
             }))

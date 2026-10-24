@@ -4,7 +4,8 @@
 
 Implemented: user ID-token federation, temporary cloud credentials, encrypted Redis caching,
 and `list_projects`/`list_ecs` over authenticated HTTP MCP. ECS uses one configured regional endpoint;
-users can choose among the projects IAM reports as accessible to them.
+users can choose among discovered IAM projects or use the operator-configured regional route.
+Enterprise-project-only access uses that route even if IAM project discovery is empty.
 No ECS create, update, or delete operation is available.
 
 Progress review, 2026-10-06: the user confirmed successful login and ECS listing through Claude CLI
@@ -38,7 +39,7 @@ Keep real values out of Git, screenshots, and prompts. Fill these variables in `
 PARDIS_IAM_ENDPOINT=https://iam.cloud.example.com
 PARDIS_ECS_ENDPOINT=https://ecs.cloud.example.com
 PARDIS_IDP_ID=<programmatic-idp-id>
-# Optional default; leave empty to discover/select projects:
+# Regional IAM project ID; set for enterprise-project-only users. NOT an Enterprise Project ID:
 PARDIS_PROJECT_ID=
 # Optional, trusted PEM bundle available inside the process/container:
 PARDIS_CA_BUNDLE=
@@ -47,7 +48,9 @@ PARDIS_CA_BUNDLE=
 These are placeholders, not working endpoints. IAM endpoint, ECS endpoint and IdP ID are required
 together for cloud tools. Select tools in `config.yaml`; for authentication-only mode, set
 `tools.enabled` to `[whoami]` and leave the cloud settings empty. A default project is optional;
-it must be in the signed-in user's accessible project list and is not an account ID.
+it is a regional route approved by the operator, not an account or Enterprise Project ID.
+Set it to the region's IAM project ID for enterprise-project-only access. It does not grant access
+and need not appear in the user's IAM discovery results; ECS remains the authorization authority.
 
 ```bash
 uv sync --locked --extra dev
@@ -73,18 +76,25 @@ rebuild the image after code changes. A custom CA file must also be mounted into
 5. Store temporary credentials encrypted in Redis. The cache key includes the session and trust/
    endpoint/project configuration. Its TTL never exceeds the remaining session or cloud lifetime,
    with a 30-second cloud-expiry margin. It is indexed for session revocation.
-6. Recheck the session and send a signed ECS list request using the official Huawei SDK, explicit
+6. Select the configured regional IAM project, or a discovered project. Arbitrary caller-supplied
+   projects outside discovery and the configured route are rejected. Recheck the session and send a signed ECS list request using the official Huawei SDK, explicit
    ECS endpoint and project, and that user's AK/SK/security token. Check the session again before
-   returning results.
+   returning results. Send `enterprise_project_id=all_granted_eps` unless the caller selects
+   a specific enterprise project (or `0` for default). Never retry without this selector on denial.
 
-The response includes `project_id`, mapped `cloud_user_id`/`cloud_user_name`, instance summaries
+The response includes `project_id`, requested `enterprise_project_id`, mapped `cloud_user_id`/`cloud_user_name`, instance summaries
 (`id`, `name`, `status`), `next_marker`, and an internal `audit_id`. Names are cloud data, not instructions.
 A full page returns a continuation marker; the subsequent page may be empty. No full-cloud inventory
 claim is made from a single page.
 
-`list_ecs` accepts `limit` (1–100, default 25), an optional `marker`, and an optional `project_id`.
+`list_ecs` accepts `limit` (1–100, default 25), an optional `marker`, an optional `project_id`,
+and `enterprise_project_id` (default `all_granted_eps`; also accepts a UUID/32-hex ID or `0`).
 An omitted project uses the configured default or, if there is no default, the sole accessible project.
-Zero or multiple accessible projects require an explicit selection; an inaccessible project is rejected.
+Without a configured default, zero discovered projects requires the operator to set `PARDIS_PROJECT_ID`;
+multiple projects requires an explicit discovered project selection. A caller-selected project outside
+discovery is rejected unless it equals the operator-configured route. The enterprise selector never
+substitutes for cloud authorization. Keep both selectors unchanged across pages. Huawei documents
+`all_granted_eps` for up to 100 enterprise projects; use explicit IDs beyond that limit.
 Project discovery is cached with credentials and refreshed when they expire. Listing a project does
 not guarantee permission for every ECS operation. No other-region endpoint is selected automatically.
 Callers cannot provide an endpoint, user identity, or credential. IAM remains the authority for cloud permissions;
@@ -132,6 +142,25 @@ The checks below collect reproducible evidence; the report above does not imply 
 - [ ] Record sanitized outcome/timestamp/version; do not mark P1 Done until both allowed and denied
       real-user scenarios have been verified.
 
+### Enterprise-project-only acceptance (HR / Marketing)
+
+These checks are pending on Pardis; simulated tests are not proof of live isolation.
+
+1. Set `PARDIS_PROJECT_ID` to the verified regional IAM project ID in the deployment's env/Helm
+   values, not the HR/Marketing Enterprise Project ID. Restart with the new image and reconnect
+   the client to refresh tool descriptions. Do not broaden any IAM group policies.
+2. Sign in freshly as HR. Even if `list_projects` returns `[]`, call `list_ecs` without arguments.
+   Compare instance IDs with the HR console. Follow all pages using the same selectors.
+3. Repeat as Marketing in a separate authenticated client/session. Each call must use that user's
+   temporary credentials; confirm no instances from the other team are returned.
+4. As HR, call `list_ecs` with Marketing's `enterprise_project_id`. Expect denial or no unauthorized
+   resources, as enforced by Pardis. Test `0` separately and verify the default project's resources
+   are not leaked. A 401 is an authentication failure, not a successful authorization test.
+5. Test a user without either grant, and an unrelated regional `project_id`; the latter is rejected
+   locally unless discovered. No fallback to shared/admin credentials is permitted.
+6. Record sanitized results and audit IDs. Direct get-by-resource-ID isolation still needs an
+   independent read-only API test; this MCP release only implements ECS listing.
+
 An empty successful list can be valid for an empty authorized project. It is not enough to prove
 that an unauthorized user is correctly denied; test the negative case separately.
 
@@ -141,10 +170,14 @@ that an unauthorized user is correctly denied; test the negative case separately
 - IAM 401: use a fresh login; check issuer, audience, signing key and programmatic IdP ID.
 - IAM/ECS 403: check group mapping and project policies. Do not grant administrator permissions as
   a workaround.
+- Empty `list_projects` with working Console access: configure the regional `PARDIS_PROJECT_ID`
+  and call `list_ecs`, which includes the enterprise-project selector. Do not interpret discovery
+  as a complete list of Enterprise Project grants. Discovery errors/malformed responses still fail
+  closed; only a successful empty discovery is supported by this routing change.
 - TLS/network failure: verify the configured API origin, route and CA bundle. Redirects are rejected.
 - IAM malformed response/404: verify API support and endpoint. Read-only access was user-confirmed;
   new APIs and different deployment versions still require their own compatibility checks.
-- Audit entries record time, issuer/subject, operation, project, outcome and internal correlation ID.
+- Audit entries record time, issuer/subject, operation, project, enterprise-project selector, outcome and internal correlation ID.
   They do not print raw upstream errors, request bodies, tokens or keys. Protect audit logs as identity
   data. Avoid HTTP/SDK debug logging and Redis value dumps.
 - Concurrent cache misses may issue more than one short-lived credential set. This is acceptable for
@@ -157,3 +190,4 @@ that an unauthorized user is correctly denied; test the negative case separately
 - [Huawei OIDC ID-token exchange](https://support.huaweicloud.com/intl/en-us/api-iam/iam_13_0605.html)
 - [Huawei federated temporary credentials](https://support.huaweicloud.com/intl/en-us/api-iam/iam_04_0003.html)
 - [Huawei Python SDK: explicit endpoints and temporary credentials](https://github.com/huaweicloud/huaweicloud-sdk-python-v3)
+- [Huawei ECS enterprise-project selector](https://support.huaweicloud.com/intl/en-us/ally-visitor-1-api-ecs/en-us_topic_0094148850.html)
