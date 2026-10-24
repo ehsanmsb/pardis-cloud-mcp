@@ -28,11 +28,12 @@ def make_cloud():
     return settings, provider, PardisCloud(settings.cloud, provider)
 
 
-async def login(provider, subject="alice", expires_in=300):
+async def login(provider, subject="alice", expires_in=300, claims=None):
     session = UserSession(
         session_id=f"session-{subject}", subject=subject,
         claims={"sub": subject, "iss": provider.settings.keycloak_issuer_url,
-                "aud": provider.settings.keycloak_client_id, "exp": time.time() + expires_in},
+                "aud": provider.settings.keycloak_client_id, "exp": time.time() + expires_in,
+                **(claims or {})},
         keycloak_tokens={"id_token": f"private-id-token-{subject}"},
     )
     await provider._set_model(provider._key("session", session.session_id), session, 3600)

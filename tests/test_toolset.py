@@ -14,6 +14,60 @@ from test_auth import make_settings
 from test_cloud import login, make_cloud
 
 
+@pytest.mark.parametrize("claims,expected", [
+    ({"Department": "Tech", "Team": "DevOps", "Venture": "Snapp",
+      "pardis_roles": ["team-marketing-readonly"]},
+     {"department": "Tech", "team": "DevOps", "venture": "Snapp", "vertical": None,
+      "pardis_roles": ["team-marketing-readonly"]}),
+    ({"Vertical": "Platform", "Venture": "Snapp",
+      "pardis_roles": ["team-hr-readonly", "team-marketing-readonly"]},
+     {"department": None, "team": None, "venture": "Snapp", "vertical": "Platform",
+      "pardis_roles": ["team-hr-readonly", "team-marketing-readonly"]}),
+    ({}, {"department": None, "team": None, "venture": None, "vertical": None, "pardis_roles": []}),
+    ({"pardis_roles": None},
+     {"department": None, "team": None, "venture": None, "vertical": None, "pardis_roles": []}),
+    ({"pardis_roles": []},
+     {"department": None, "team": None, "venture": None, "vertical": None, "pardis_roles": []}),
+])
+def test_whoami_organization_claims_over_authenticated_http(claims, expected):
+    async def scenario():
+        settings, provider, _ = make_cloud()
+        settings = replace(settings, cloud=None, enabled_tools=("whoami",))
+        _, tokens = await login(provider, claims={**claims, "private_claim": "not-for-output"})
+        _, other_tokens = await login(provider, subject="bob")
+        app = build_server(settings, provider).streamable_http_app(json_response=True, stateless_http=True)
+        async with app.router.lifespan_context(app):
+            async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app),
+                                         base_url=settings.oauth_issuer_url) as client:
+                async def rpc(token, method, params=None):
+                    response = await client.post("/mcp", headers={
+                        "Authorization": f"Bearer {token}",
+                        "Accept": "application/json, text/event-stream",
+                    }, json={"jsonrpc": "2.0", "id": 1, "method": method, "params": params or {}})
+                    assert response.status_code == 200, response.text
+                    return response.json()["result"]
+
+                await rpc(tokens.access_token, "initialize", {
+                    "protocolVersion": LATEST_PROTOCOL_VERSION, "capabilities": {},
+                    "clientInfo": {"name": "identity-test", "version": "1"},
+                })
+                tools = (await rpc(tokens.access_token, "tools/list"))["tools"]
+                assert set(expected) <= tools[0]["outputSchema"]["properties"].keys()
+                result = await rpc(tokens.access_token, "tools/call", {"name": "whoami"})
+                assert not result.get("isError")
+                identity = result["structuredContent"]
+                assert identity == {"subject": "alice", "username": None, "email": None,
+                                    "client_id": "test-client", "scopes": ["mcp:tools"], **expected}
+                other = await rpc(other_tokens.access_token, "tools/call", {"name": "whoami"})
+                assert other["structuredContent"]["subject"] == "bob"
+                assert all(other["structuredContent"][field] is None
+                           for field in ("department", "team", "venture", "vertical"))
+                assert other["structuredContent"]["pardis_roles"] == []
+        await provider.redis.aclose()
+
+    asyncio.run(scenario())
+
+
 @pytest.mark.parametrize("enabled,disabled,with_cloud,expected", [
     (("*",), (), True, {"whoami", "list_projects", "list_ecs"}),
     (("*",), (), False, {"whoami"}),

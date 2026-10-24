@@ -19,6 +19,11 @@ class Identity(BaseModel):
     email: str | None
     client_id: str
     scopes: list[str]
+    department: str | None = None
+    team: str | None = None
+    venture: str | None = None
+    vertical: str | None = None
+    pardis_roles: list[str] = Field(default_factory=list)
 
 
 def register_tools(
@@ -31,7 +36,7 @@ def register_tools(
     cloud = None
 
     def whoami() -> Identity:
-        """Return the signed-in user's identity."""
+        """Return the signed-in user's identity, organization attributes and pardis_roles from the verified ID token captured at sign-in. Roles are identity-provider claims, not a live list of effective IAM permissions."""
         token = get_access_token()
         if token is None:
             raise ToolError("Authentication context is unavailable")
@@ -39,6 +44,9 @@ def register_tools(
         return Identity(
             subject=token.subject or "", username=claims.get("preferred_username"),
             email=claims.get("email"), client_id=token.client_id, scopes=token.scopes,
+            department=claims.get("Department"), team=claims.get("Team"),
+            venture=claims.get("Venture"), vertical=claims.get("Vertical"),
+            pardis_roles=claims.get("pardis_roles") if claims.get("pardis_roles") is not None else [],
         )
 
     async def list_projects() -> list[CloudProject]:

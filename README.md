@@ -89,6 +89,35 @@ Run automated tests (Keycloak and Redis are simulated in these tests):
 uv run pytest
 ```
 
+## Identity attributes (`whoami`)
+
+`whoami` returns `subject`, `username`, `email`, `client_id`, and `scopes`, plus
+these optional organization attributes from the verified ID token stored at sign-in:
+
+| ID token claim (case-sensitive) | `whoami` field |
+| --- | --- |
+| `Department` | `department` |
+| `Team` | `team` |
+| `Venture` | `venture` |
+| `Vertical` | `vertical` |
+
+Organization claims must be strings when present; absent or null claims return `null`.
+`Venture` and `Vertical` are separate attributes: one never substitutes for the other.
+For example, `Department: Tech`, `Team: DevOps`, and `Venture: Snapp` produce:
+
+```json
+{"department": "Tech", "team": "DevOps", "venture": "Snapp", "vertical": null}
+```
+
+These fields describe the user; they do not change IAM group mapping or grant cloud access.
+`whoami` also returns `pardis_roles`, for example `["team-marketing-readonly"]`, from the
+ID token's `pardis_roles` claim. It must be a list of strings; an absent, null, or empty claim
+returns `[]`. These are the identity provider's roles captured at sign-in, not a live list of
+IAM groups or effective cloud permissions. MCP `scopes` remain a separate field.
+After adding or changing the claims in the identity provider, sign out and sign in to MCP
+again to capture a new ID token. To verify, call `whoami` from your MCP client after deploying
+or restarting the updated server. Raw tokens and other arbitrary claims are not returned.
+
 ## Read-only Pardis integration
 
 Set the IAM endpoint, ECS endpoint and IdP ID in the private `.env` to make `list_projects` and `list_ecs` available for selection.
