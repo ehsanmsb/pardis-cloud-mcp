@@ -1,7 +1,8 @@
 # D0: Deployment contracts and offline examples
 
-Implemented stage: D0 of [the development roadmap](APPLICATION_DEPLOYMENT_PLAN.md).
-This stage adds data models and an offline validator. It does not register new MCP tools, run code
+Historical stage: D0 of [the development roadmap](APPLICATION_DEPLOYMENT_PLAN.md), released in v3.1.0.
+For the subsequent live planning tools, see [Deployment planning](DEPLOYMENT_PLANNING.md).
+The D0 stage added data models and an offline validator. It did not register new MCP tools, run code
 review automatically, generate a deployment document, execute builds, store plans, or contact Pardis.
 Existing authentication, federation, tool configuration and cloud permissions are unchanged.
 
@@ -11,7 +12,7 @@ Models live in `src/pardis_cloud_mcp/deployment.py` and reject unknown fields an
 
 | Model | Meaning |
 | --- | --- |
-| `SourceAssessment` | Agent-provided review data tied to a repository ID and full 40/64-character commit revision |
+| `SourceAssessment` | Agent-provided review tied to a source label and optional full 40/64-character commit revision; execution requires a verified immutable source later |
 | `ApplicationBinding` | Internal application owner, repository, target binding and explicit role-sharing metadata |
 | `RolePolicy` | Operator-owned role grants referencing declared targets, resource presets and actions |
 | `DeploymentPlan` | Draft containing application/assessment/target/preset, rationale, steps and unresolved decisions |
@@ -117,7 +118,7 @@ uv run --locked pytest -q
 Coverage includes valid example round-trips, explicit draft defaults, absent revision, identity/role
 injection fields, unexpected secret values, invalid types and sizes, source paths, false readiness,
 broken policy references, CCI/ECS namespace mismatch, app/plan reference mismatch, safe CLI errors,
-oversized input and the sample health handler. Existing HTTP tests verify that the tool catalog is unchanged.
+oversized input and the sample health handler. Current HTTP tests separately cover the subsequent planning tools.
 
 Review the example assessment, policy and both plans before D1. Confirm the names and fields are useful,
 then implement actual role decisions and `get_deployment_options`. No CCI/ECS write test is part of D0.

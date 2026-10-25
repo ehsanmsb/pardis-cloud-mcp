@@ -4,4 +4,14 @@ tools:
     - whoami
     - list_projects
     - list_ecs
+    - get_deployment_options
+    - prepare_deployment
+    - get_deployment_plan
   disabled: []
+
+# Permission to create advisory documents only; does not grant cloud provisioning access.
+planning:
+  allowed_roles:
+    - team-hr-readonly
+    - team-marketing-readonly
+  plan_ttl_seconds: 1800

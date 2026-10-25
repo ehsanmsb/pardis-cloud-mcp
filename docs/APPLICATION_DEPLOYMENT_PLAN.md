@@ -1,8 +1,9 @@
 # Application Deployment Development Plan
 
 Date: 2026-10-25. Baseline: application release `v3.0.0`, commit `2f136d2`.
-Status: D0 contracts and fixtures implemented; the new tools below are not implemented.
-See [the D0 test guide](DEVELOPMENT_D0.md) for repeatable offline checks. User contract review is pending.
+Status: D0 released in v3.1.0. A local advisory planning slice across D1–D3 is implemented;
+real-agent acceptance is pending. See [the planning guide](DEPLOYMENT_PLANNING.md) for prompts
+and [the D0 test guide](DEVELOPMENT_D0.md) for offline contract checks.
 
 This is the active development roadmap. It supersedes the ECS-only scope and sequencing in
 [MVP_PLAN.md](MVP_PLAN.md) and [ECS_IMPLEMENTATION_PLAN.md](ECS_IMPLEMENTATION_PLAN.md).
@@ -73,10 +74,10 @@ does not itself authorize a release or cloud mutation.
 
 | Stage | Deliverable | Status | Acceptance evidence |
 | --- | --- | --- | --- |
-| D0 | Contracts and synthetic application fixtures | Implemented; user review pending | `tests/test_deployment.py`, JSON examples and [D0 test guide](DEVELOPMENT_D0.md) |
-| D1 | Role policy and deployment options | Not started | — |
-| D2 | Source assessment intake | Not started | — |
-| D3 | Stored plan and Markdown deployment document | Not started | — |
+| D0 | Contracts and synthetic application fixtures | Released v3.1.0 | `tests/test_deployment.py`, JSON examples and [D0 test guide](DEVELOPMENT_D0.md) |
+| D1 | Role policy and deployment options | Partial: planning role gate and advisory options; live target bindings pending | `tests/test_planning.py` |
+| D2 | Source assessment intake | Advisory intake implemented in `prepare_deployment`; source registry/provenance verification pending | Valid/incomplete assessment HTTP tests; real-agent review pending |
+| D3 | Stored plan and Markdown deployment document | Owner-only preview implemented; execution-ready binding pending | Encrypted persistence, role/owner isolation, expiry, CCI/ECS documents; manual acceptance pending |
 | D4 | Approval, quota and idempotent operation state | Not started | — |
 | D5 | Build/delivery adapter and verified artifact | Not started | — |
 | D6 | First live CCI or ECS deployment path | Not started | — |
@@ -85,6 +86,8 @@ does not itself authorize a release or cloud mutation.
 | D9 | End-to-end acceptance and operational handoff | Not started | — |
 
 Milestone A: D0–D3, source to reviewed document, zero cloud mutations.
+The current preview demonstrates this user flow, but does not yet verify authorized cloud target
+bindings or source provenance. Do not treat it as a deployable plan or full D1–D3 completion.
 Milestone B: D4–D6, approved plan to one healthy real application.
 Milestone C: D7–D9, both targets, logs, isolation and recovery acceptance.
 Do not promise delivery dates until build integration and target API access are verified.
@@ -96,10 +99,9 @@ do not replace existing tools or introduce a general-purpose command-execution t
 
 | Tool | Input outline | Output and behavior |
 | --- | --- | --- |
-| `get_deployment_options` | Optional regional project selector | Supported targets, stacks, presets and permitted target bindings; distinguishes configured options from live-verified data |
-| `submit_source_assessment` | Source reference, bounded file evidence and structured agent review | `assessment_id`, findings, missing inputs, readiness; no scripts or builds executed |
-| `prepare_deployment` | Assessment, application, target, preset and exposure selection | `plan_id`, normalized resources, validation results, approval requirements, expiry and Markdown document; no provisioning |
-| `get_deployment_plan` | `plan_id` | Owner-authorized structured plan and the exact document generated from it |
+| `get_deployment_options` | None | Implemented: role-gated advisory CCI/ECS targets, review stacks and fixed suggestions; live bindings pending |
+| `prepare_deployment` | Agent assessment, application name, candidate target | Implemented: owner-only draft, expiry and readable Markdown; fixed advisory sizing, no provisioning |
+| `get_deployment_plan` | Optional `plan_id`; omit for latest | Implemented: owner-authorized exact saved document with current-session role check |
 | `deploy_app` | `plan_id`, `idempotency_key` | Existing or newly submitted `operation_id`; no replacement deployment parameters or caller-provided approval boolean |
 | `get_deployment_status` | `operation_id` | Actual stages, resource identifiers and endpoint when verified |
 | `get_app_logs` | Application identifier, bounded time range and result limit | Authorized, redacted logs with truncation information |
@@ -158,7 +160,8 @@ user without a matching policy. Start audit events for allow/deny decisions in t
 ### D2 — Source intake and agent-assisted code review
 
 Initially let the agent inspect a user-selected workspace/repository using its existing read access.
-It submits a bounded assessment and relevant manifests through `submit_source_assessment`; the MCP
+It submits a bounded assessment with manifest observations through `prepare_deployment`; a separate
+assessment-submission tool is unnecessary for the preview. The MCP
 server does not fetch arbitrary URLs or read client-provided filesystem paths. Link private repository
 references to an operator-approved source registry. Treat the submitted analysis as advisory evidence.
 

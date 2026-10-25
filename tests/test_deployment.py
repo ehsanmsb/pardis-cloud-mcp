@@ -55,11 +55,10 @@ def test_assessment_rejects_invalid_and_identity_inputs(path, value):
         SourceAssessment.model_validate(payload)
 
 
-def test_missing_revision_and_false_readiness_are_rejected():
+def test_unknown_revision_is_allowed_for_preview_but_false_readiness_is_rejected():
     payload = read_example("assessment.json")
     del payload["source"]["revision"]
-    with pytest.raises(ValidationError):
-        SourceAssessment.model_validate(payload)
+    assert SourceAssessment.model_validate(payload).source.revision is None
     payload = read_example("assessment.needs-input.json")
     assert SourceAssessment.model_validate(payload).readiness == "needs_input"
     payload["readiness"] = "ready_for_planning"

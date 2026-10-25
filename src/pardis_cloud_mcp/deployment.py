@@ -1,4 +1,4 @@
-"""D0 data contracts only: no authorization decisions, source execution or cloud calls."""
+"""Planning data contracts; validation never executes source or calls cloud APIs."""
 from typing import Annotated, Literal, Self
 from urllib.parse import urlsplit
 
@@ -10,7 +10,7 @@ Text = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max
 Name = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=128)]
 Target = Literal["cci", "ecs"]
 Action = Literal["prepare", "deploy", "status", "logs"]
-Stack = Literal["python-http"]
+Stack = Literal["python-http", "node-http", "static-web", "unknown"]
 ProjectId = Annotated[str, StringConstraints(pattern=r"^[a-f0-9]{32}$")]
 EnterpriseProjectId = Annotated[str, StringConstraints(
     pattern=r"^(?:0|[a-f0-9]{32}|[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})$",
@@ -23,7 +23,7 @@ class Contract(BaseModel):
 
 class SourceReference(Contract):
     repository_id: Identifier
-    revision: Annotated[str, StringConstraints(pattern=r"^(?:[a-f0-9]{40}|[a-f0-9]{64})$")]
+    revision: Annotated[str, StringConstraints(pattern=r"^(?:[a-f0-9]{40}|[a-f0-9]{64})$")] | None = None
 
 
 class Evidence(Contract):

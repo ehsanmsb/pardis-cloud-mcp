@@ -6,10 +6,18 @@ The active [application deployment development plan](docs/APPLICATION_DEPLOYMENT
 testable stages from source review and a deployment document to approved CCI/ECS deployment.
 It retains the current authentication flow and uses `pardis_roles` for access decisions.
 The [earlier MVP plan](docs/MVP_PLAN.md) and [ECS-only plan](docs/ECS_IMPLEMENTATION_PLAN.md) remain
-historical references. The new application deployment tools are not implemented yet.
+historical references. Authenticated deployment **planning** is available; building and deploying
+applications are not implemented yet.
 
 D0 development contracts and synthetic CCI/ECS plans are available for offline testing in the
-[D0 development guide](docs/DEVELOPMENT_D0.md). This adds no live tools or cloud operations.
+[D0 development guide](docs/DEVELOPMENT_D0.md). To test the actual agent-to-document experience,
+follow the [prompt-based planning guide](docs/DEPLOYMENT_PLANNING.md). The agent reviews source
+using its own authorized file access; MCP saves a readable advisory document in encrypted Redis.
+
+Example prompt, after connecting the updated local MCP server:
+
+> Review my project and prepare a deployment plan for Pardis Cloud. Explain the proposed services,
+> missing configuration and next steps in plain language. Do not build or deploy anything.
 
 ## Architecture
 
@@ -178,11 +186,15 @@ directory by default; set `MCP_CONFIG_FILE` to an absolute or relative path to u
 Remove the former `MCP_ENABLED_TOOLS` and `MCP_DISABLED_TOOLS` environment variables; tool selection
 now comes exclusively from YAML, and startup rejects those old variables to prevent conflicting settings.
 
-- Available names are `whoami`, `list_projects`, and `list_ecs` (case-sensitive).
+- Available names are `whoami`, `list_projects`, `list_ecs`, `get_deployment_options`,
+  `prepare_deployment`, and `get_deployment_plan` (case-sensitive).
 - `tools.enabled` is required; `[]` enables no tools. `tools.disabled` defaults to `[]` and takes precedence.
-- The checked-in configuration explicitly enables the three current tools. New tools stay disabled until added.
+- The checked-in configuration enables all six current tools. Its `planning.allowed_roles` enables
+  document preparation for the two existing test roles only; it does not grant cloud access.
+  Configure your own allowed roles before using it in another environment. New tools stay disabled until added.
 - Optionally, `enabled: ["*"]` selects every available tool, including future additions. YAML requires
-  quotes around the wildcard. In this mode, cloud tools are skipped when cloud configuration is absent.
+  quotes around the wildcard. In this mode, cloud tools are skipped when cloud configuration is absent,
+  and planning tools are skipped when `planning` configuration is absent.
 - Whitespace around names and duplicate names are ignored. Missing files, malformed YAML, unknown
   fields, non-list values, empty/non-string names, unknown tools, and mixing `"*"` with names fail startup.
 - Disabled tools are neither advertised by `tools/list` nor callable through `tools/call`.

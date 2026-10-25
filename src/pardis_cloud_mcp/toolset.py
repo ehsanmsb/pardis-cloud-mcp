@@ -11,6 +11,9 @@ from pydantic import Field
 
 from pardis_cloud_mcp.auth import RedisKeycloakOAuthProvider
 from pardis_cloud_mcp.cloud import ENTERPRISE_PROJECT_PATTERN, CloudError, CloudProject, CloudSettings, EcsPage, PardisCloud
+from pardis_cloud_mcp.config import PlanningConfig
+from pardis_cloud_mcp.deployment import Name, SourceAssessment, Target
+from pardis_cloud_mcp.planning import PlanDocument, PlanningError, PlanningOptions, PlanningService
 
 
 class Identity(TypedDict):
@@ -32,8 +35,11 @@ def register_tools(
     cloud_settings: CloudSettings | None,
     enabled: tuple[str, ...] = ("*",),
     disabled: tuple[str, ...] = (),
+    *,
+    planning_config: PlanningConfig | None = None,
 ) -> None:
     cloud = None
+    planning = PlanningService(provider, planning_config) if planning_config is not None else None
 
     def whoami(include_details: bool = False) -> Identity:
         """Return the signed-in user's username, email, organization attributes and pardis_roles. Set include_details=true only for debugging to also return subject, client_id and scopes. Roles are verified ID token claims captured at sign-in, not a live list of effective IAM permissions."""
@@ -76,12 +82,41 @@ def register_tools(
         except CloudError as exc:
             raise ToolError(str(exc)) from None
 
+    async def planning_call(action: str, **kwargs):
+        token = get_access_token()
+        if token is None or planning is None:
+            raise ToolError("Deployment planning is unavailable in this session.")
+        try:
+            return await planning.call(action, token.token, **kwargs)
+        except PlanningError as exc:
+            raise ToolError(str(exc)) from None
+
+    async def get_deployment_options() -> PlanningOptions:
+        """Get advisory CCI/ECS planning options for the signed-in user. These are configured suggestions, not live cloud grants, capacity or prices. Read the user's authorized source with your own file tools, then use prepare_deployment. Do not ask the user for JSON or cloud IDs."""
+        return await planning_call("get_deployment_options")
+
+    async def prepare_deployment(assessment: SourceAssessment, application_name: Name,
+                                 target: Target = "cci") -> PlanDocument:
+        """Create and save a readable advisory deployment document from your code review. Inspect the user's authorized source first; never run its scripts, send raw source/secrets, or invent missing facts. Fill the assessment yourself, use a short source label and omit unknown revision. Mark blockers or missing runtime information as needs_input. The user should not fill technical fields. Present document_markdown to the user; retain plan_id internally. Saves an encrypted draft only: no build, cloud writes, approval, pricing or quota verification. To revise, call again with the updated assessment/target."""
+        return await planning_call("prepare_deployment", assessment=assessment,
+                                   application_name=application_name, target=target)
+
+    async def get_deployment_plan(
+        plan_id: Annotated[str | None, Field(pattern=r"^plan-[a-f0-9]{32}$")] = None,
+    ) -> PlanDocument:
+        """Retrieve the signed-in user's saved draft document. Omit plan_id for their latest plan; do not ask the user to copy an ID. Requires current planning access and original role overlap. Expired or inaccessible plans must be prepared again. This does not deploy anything."""
+        return await planning_call("get_deployment_plan", plan_id=plan_id)
+
     read_only = ToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True)
+    stores_draft = ToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=False)
     # Add new tools here: handler, cloud configuration requirement, MCP annotations.
     catalog = (
         (whoami, False, read_only),
         (list_projects, True, read_only),
         (list_ecs, True, read_only),
+        (get_deployment_options, False, read_only),
+        (prepare_deployment, False, stores_draft),
+        (get_deployment_plan, False, read_only),
     )
     known = {handler.__name__ for handler, _, _ in catalog}
     requested = set(enabled)
@@ -92,6 +127,11 @@ def register_tools(
     if unknown:
         raise ValueError(f"Unknown MCP tools: {', '.join(sorted(unknown))}. Available: {', '.join(sorted(known))}")
     selected = (known if requested == {"*"} else requested) - excluded
+    planning_names = {"get_deployment_options", "prepare_deployment", "get_deployment_plan"}
+    if planning_config is None:
+        if requested != {"*"} and selected & planning_names:
+            raise ValueError("Selected planning tools require planning.allowed_roles in YAML configuration")
+        selected -= planning_names
     cloud_names = {handler.__name__ for handler, needs_cloud, _ in catalog if needs_cloud}
     if cloud_settings is None:
         if requested != {"*"} and selected & cloud_names:

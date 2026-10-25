@@ -5,6 +5,8 @@ from typing import Annotated
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
+from pardis_cloud_mcp.deployment import Name
+
 
 ToolName = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
 
@@ -16,10 +18,18 @@ class ToolConfig(BaseModel):
     disabled: list[ToolName] = Field(default_factory=list)
 
 
+class PlanningConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    allowed_roles: list[Name] = Field(min_length=1, max_length=64)
+    plan_ttl_seconds: int = Field(default=1800, ge=60, le=86400)
+
+
 class Config(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
     tools: ToolConfig
+    planning: PlanningConfig | None = None
 
 
 def load_config(path: str) -> Config:
