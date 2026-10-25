@@ -1,29 +1,29 @@
 """Central tool catalog and startup selection for the MCP server."""
 from __future__ import annotations
 
-from typing import Annotated
+from typing import Annotated, NotRequired, TypedDict
 
 from mcp.server import MCPServer
 from mcp.server.auth.middleware.auth_context import get_access_token
 from mcp.server.mcpserver.exceptions import ToolError
 from mcp_types import ToolAnnotations
-from pydantic import BaseModel, Field
+from pydantic import Field
 
 from pardis_cloud_mcp.auth import RedisKeycloakOAuthProvider
 from pardis_cloud_mcp.cloud import ENTERPRISE_PROJECT_PATTERN, CloudError, CloudProject, CloudSettings, EcsPage, PardisCloud
 
 
-class Identity(BaseModel):
-    subject: str
+class Identity(TypedDict):
     username: str | None
     email: str | None
-    client_id: str
-    scopes: list[str]
-    department: str | None = None
-    team: str | None = None
-    venture: str | None = None
-    vertical: str | None = None
-    pardis_roles: list[str] = Field(default_factory=list)
+    department: str | None
+    team: str | None
+    venture: str | None
+    vertical: str | None
+    pardis_roles: list[str]
+    subject: NotRequired[str]
+    client_id: NotRequired[str]
+    scopes: NotRequired[list[str]]
 
 
 def register_tools(
@@ -35,19 +35,21 @@ def register_tools(
 ) -> None:
     cloud = None
 
-    def whoami() -> Identity:
-        """Return the signed-in user's identity, organization attributes and pardis_roles from the verified ID token captured at sign-in. Roles are identity-provider claims, not a live list of effective IAM permissions."""
+    def whoami(include_details: bool = False) -> Identity:
+        """Return the signed-in user's username, email, organization attributes and pardis_roles. Set include_details=true only for debugging to also return subject, client_id and scopes. Roles are verified ID token claims captured at sign-in, not a live list of effective IAM permissions."""
         token = get_access_token()
         if token is None:
             raise ToolError("Authentication context is unavailable")
         claims = token.claims or {}
-        return Identity(
-            subject=token.subject or "", username=claims.get("preferred_username"),
-            email=claims.get("email"), client_id=token.client_id, scopes=token.scopes,
+        identity = Identity(
+            username=claims.get("preferred_username"), email=claims.get("email"),
             department=claims.get("Department"), team=claims.get("Team"),
             venture=claims.get("Venture"), vertical=claims.get("Vertical"),
             pardis_roles=claims.get("pardis_roles") if claims.get("pardis_roles") is not None else [],
         )
+        if include_details:
+            identity.update(subject=token.subject or "", client_id=token.client_id, scopes=token.scopes)
+        return identity
 
     async def list_projects() -> list[CloudProject]:
         """Discover regional IAM projects, not enterprise projects. An empty list does not prove lack of ECS access: enterprise-project-only users should call list_ecs with the deployment's configured default. If no default is configured, ask the operator to set PARDIS_PROJECT_ID; supplying an arbitrary project ID will not bypass discovery."""

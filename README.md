@@ -91,7 +91,7 @@ uv run pytest
 
 ## Identity attributes (`whoami`)
 
-`whoami` returns `subject`, `username`, `email`, `client_id`, and `scopes`, plus
+By default, `whoami` returns `username`, `email`, and `pardis_roles`, plus
 these optional organization attributes from the verified ID token stored at sign-in:
 
 | ID token claim (case-sensitive) | `whoami` field |
@@ -113,7 +113,15 @@ These fields describe the user; they do not change IAM group mapping or grant cl
 `whoami` also returns `pardis_roles`, for example `["team-marketing-readonly"]`, from the
 ID token's `pardis_roles` claim. It must be a list of strings; an absent, null, or empty claim
 returns `[]`. These are the identity provider's roles captured at sign-in, not a live list of
-IAM groups or effective cloud permissions. MCP `scopes` remain a separate field.
+IAM groups or effective cloud permissions.
+
+For troubleshooting, call `whoami` with `{"include_details": true}` to also return `subject`
+(the identity provider's user ID), `client_id` (the agent's registered MCP OAuth client ID),
+and `scopes` (MCP OAuth scopes, not cloud permissions). These three keys are omitted from
+the default response and when `include_details` is `false`; they are not returned as nulls.
+Clients that previously read these keys must now explicitly request details. Backend identity,
+session storage, and authorization are unchanged.
+
 After adding or changing the claims in the identity provider, sign out and sign in to MCP
 again to capture a new ID token. To verify, call `whoami` from your MCP client after deploying
 or restarting the updated server. Raw tokens and other arbitrary claims are not returned.

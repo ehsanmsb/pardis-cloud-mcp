@@ -1,4 +1,5 @@
 import asyncio
+import json
 from dataclasses import replace
 from unittest.mock import AsyncMock
 
@@ -53,12 +54,22 @@ def test_whoami_organization_claims_over_authenticated_http(claims, expected):
                 })
                 tools = (await rpc(tokens.access_token, "tools/list"))["tools"]
                 assert set(expected) <= tools[0]["outputSchema"]["properties"].keys()
-                result = await rpc(tokens.access_token, "tools/call", {"name": "whoami"})
-                assert not result.get("isError")
-                identity = result["structuredContent"]
-                assert identity == {"subject": "alice", "username": None, "email": None,
-                                    "client_id": "test-client", "scopes": ["mcp:tools"], **expected}
-                other = await rpc(other_tokens.access_token, "tools/call", {"name": "whoami"})
+                assert tools[0]["inputSchema"]["properties"]["include_details"]["default"] is False
+                details = {"subject": "alice", "client_id": "test-client", "scopes": ["mcp:tools"]}
+                assert not set(details) & set(tools[0]["outputSchema"].get("required", []))
+                for arguments in ({}, {"include_details": False}, {"include_details": True}):
+                    result = await rpc(tokens.access_token, "tools/call", {
+                        "name": "whoami", "arguments": arguments,
+                    })
+                    assert not result.get("isError")
+                    identity = {"username": None, "email": None, **expected}
+                    if arguments.get("include_details"):
+                        identity.update(details)
+                    assert result["structuredContent"] == identity
+                    assert json.loads(result["content"][0]["text"]) == identity
+                other = await rpc(other_tokens.access_token, "tools/call", {
+                    "name": "whoami", "arguments": {"include_details": True},
+                })
                 assert other["structuredContent"]["subject"] == "bob"
                 assert all(other["structuredContent"][field] is None
                            for field in ("department", "team", "venture", "vertical"))
@@ -120,7 +131,8 @@ def test_selected_tools_are_the_only_discoverable_and_callable_tools(
                     assert f"Unknown tool: {name}" in result["content"][0]["text"]
                 if "whoami" in expected:
                     result = await rpc("tools/call", {"name": "whoami"})
-                    assert result["structuredContent"]["subject"] == "alice"
+                    assert "subject" not in result["structuredContent"]
+                    assert result["structuredContent"]["pardis_roles"] == []
                 assert (await client.get("/health")).json()["status"] == "ok"
                 assert (await client.get("/.well-known/oauth-authorization-server")).status_code == 200
                 assert (await client.post("/mcp", json={})).status_code == 401

@@ -224,7 +224,8 @@ def test_mcp_http_initialization_discovery_tool_call_and_revocation(monkeypatch,
                 assert any(t["name"] == "list_projects" for t in tools)
                 assert "empty" in next(t for t in tools if t["name"] == "list_projects")["description"]
                 identity = (await rpc("tools/call", {"name": "whoami"})).json()["result"]
-                assert identity["structuredContent"]["subject"] == "alice"
+                assert "subject" not in identity["structuredContent"]
+                assert identity["structuredContent"]["pardis_roles"] == []
                 result = (await rpc("tools/call", {"name": "list_ecs", "arguments": {"limit": 1}})).json()["result"]
                 assert not result.get("isError")
                 assert result["structuredContent"]["servers"][0]["id"] == "server-1"
