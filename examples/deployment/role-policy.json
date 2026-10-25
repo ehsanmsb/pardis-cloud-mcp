@@ -1,0 +1,82 @@
+{
+  "version": "demo-v1",
+  "target_bindings": [
+    {
+      "id": "demo-cci",
+      "target": "cci",
+      "project_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "enterprise_project_id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "cci_namespace": "demo-apps"
+    },
+    {
+      "id": "demo-ecs",
+      "target": "ecs",
+      "project_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "enterprise_project_id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    }
+  ],
+  "presets": [
+    {
+      "name": "small-cci",
+      "resources": {
+        "cpu_millicores": 500,
+        "memory_mib": 512,
+        "disk_gib": 0,
+        "replicas": 1
+      }
+    },
+    {
+      "name": "small-ecs",
+      "resources": {
+        "cpu_millicores": 1000,
+        "memory_mib": 1024,
+        "disk_gib": 20,
+        "replicas": 1
+      }
+    }
+  ],
+  "grants": [
+    {
+      "role": "demo-deployer",
+      "actions": [
+        "prepare",
+        "deploy",
+        "status",
+        "logs"
+      ],
+      "target_bindings": [
+        "demo-cci",
+        "demo-ecs"
+      ],
+      "presets": [
+        "small-cci",
+        "small-ecs"
+      ],
+      "stacks": [
+        "python-http"
+      ],
+      "exposure": [
+        "private"
+      ]
+    },
+    {
+      "role": "demo-reader",
+      "actions": [
+        "status",
+        "logs"
+      ],
+      "target_bindings": [
+        "demo-cci"
+      ],
+      "presets": [
+        "small-cci"
+      ],
+      "stacks": [
+        "python-http"
+      ],
+      "exposure": [
+        "private"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,29 @@
+{
+  "source": {
+    "repository_id": "sample-http",
+    "revision": "1111111111111111111111111111111111111111"
+  },
+  "stack": "python-http",
+  "build_observation": "Standard-library application; no package installation required.",
+  "start_observation": "Observed local entrypoint: python app.py. This is review data, not an execution command.",
+  "port": 8080,
+  "health_path": "/health",
+  "environment": [],
+  "dependencies": [],
+  "findings": [
+    {
+      "severity": "info",
+      "provenance": "observed",
+      "message": "A JSON health response is implemented.",
+      "evidence": [
+        {
+          "file": "app.py",
+          "line": 8,
+          "observation": "GET /health is handled by the HTTP request handler."
+        }
+      ]
+    }
+  ],
+  "missing_inputs": [],
+  "readiness": "ready_for_planning"
+}

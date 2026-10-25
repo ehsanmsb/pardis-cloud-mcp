@@ -1,0 +1,35 @@
+{
+  "source": {
+    "repository_id": "sample-http",
+    "revision": "main"
+  },
+  "stack": "python-http",
+  "build_observation": "Standard-library application; no package installation required.",
+  "start_observation": "Observed local entrypoint: python app.py. This is review data, not an execution command.",
+  "port": 70000,
+  "health_path": "/health",
+  "environment": [
+    {
+      "name": "DATABASE_URL",
+      "kind": "secret",
+      "value": "SYNTHETIC-DO-NOT-ECHO"
+    }
+  ],
+  "dependencies": [],
+  "findings": [
+    {
+      "severity": "info",
+      "provenance": "observed",
+      "message": "A JSON health response is implemented.",
+      "evidence": [
+        {
+          "file": "app.py",
+          "line": 8,
+          "observation": "GET /health is handled by the HTTP request handler."
+        }
+      ]
+    }
+  ],
+  "missing_inputs": [],
+  "readiness": "ready_for_planning"
+}

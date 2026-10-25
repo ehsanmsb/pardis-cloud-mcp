@@ -1,0 +1,79 @@
+{
+  "application": {
+    "application_id": "sample-http",
+    "owner": {
+      "issuer": "https://identity.example.com/realms/demo",
+      "subject": "demo-user"
+    },
+    "source_repository_id": "sample-http",
+    "target_binding_id": "demo-ecs",
+    "shared_roles": []
+  },
+  "assessment": {
+    "source": {
+      "repository_id": "sample-http",
+      "revision": "1111111111111111111111111111111111111111"
+    },
+    "stack": "python-http",
+    "build_observation": "Standard-library application; no package installation required.",
+    "start_observation": "Observed local entrypoint: python app.py. This is review data, not an execution command.",
+    "port": 8080,
+    "health_path": "/health",
+    "environment": [],
+    "dependencies": [],
+    "findings": [
+      {
+        "severity": "info",
+        "provenance": "observed",
+        "message": "A JSON health response is implemented.",
+        "evidence": [
+          {
+            "file": "app.py",
+            "line": 8,
+            "observation": "GET /health is handled by the HTTP request handler."
+          }
+        ]
+      }
+    ],
+    "missing_inputs": [],
+    "readiness": "ready_for_planning"
+  },
+  "target": {
+    "id": "demo-ecs",
+    "target": "ecs",
+    "project_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "enterprise_project_id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  },
+  "preset": {
+    "name": "small-ecs",
+    "resources": {
+      "cpu_millicores": 1000,
+      "memory_mib": 1024,
+      "disk_gib": 20,
+      "replicas": 1
+    }
+  },
+  "exposure": "private",
+  "rationale": "Synthetic single HTTP application demonstrating the ECS contract; not a live capacity recommendation.",
+  "steps": [
+    {
+      "name": "build",
+      "description": "Build the verified source using an approved recipe and record the image digest."
+    },
+    {
+      "name": "deploy",
+      "description": "Use the future target adapter to deploy the application."
+    },
+    {
+      "name": "verify",
+      "description": "Check actual application health before reporting success."
+    }
+  ],
+  "unresolved": [
+    "Verify the synthetic source reference against an approved repository.",
+    "Resolve real network and target capacity; these IDs and sizes are examples only.",
+    "Select the build provider, approved recipe and immutable artifact digest.",
+    "Check quota, cost policy and required approvals before execution."
+  ],
+  "rollback_notes": "Record resources created by this operation; never remove shared resources automatically."
+}

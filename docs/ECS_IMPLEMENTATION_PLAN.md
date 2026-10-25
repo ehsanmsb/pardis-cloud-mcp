@@ -1,5 +1,10 @@
 # ECS Implementation Plan
 
+> Historical ECS-only sequence. As of 2026-10-25, the
+> [application deployment development plan](APPLICATION_DEPLOYMENT_PLAN.md) is the active roadmap
+> for source review, deployment documents, role-based authorization and CCI/ECS execution.
+> Reuse relevant failure-handling ideas below; do not treat the old scope as current requirements.
+
 Proposed implementation, 2026-10-06. **None of the new tools or configuration below exists yet.**
 For current evidence and acceptance IDs, see [MVP plan](MVP_PLAN.md).
 

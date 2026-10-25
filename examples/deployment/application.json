@@ -1,0 +1,10 @@
+{
+  "application_id": "sample-http",
+  "owner": {
+    "issuer": "https://identity.example.com/realms/demo",
+    "subject": "demo-user"
+  },
+  "source_repository_id": "sample-http",
+  "target_binding_id": "demo-cci",
+  "shared_roles": []
+}

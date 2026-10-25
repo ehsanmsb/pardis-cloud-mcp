@@ -2,8 +2,14 @@
 
 An HTTP MCP server with browser login through your organization's identity provider and optional read-only ECS access through Huawei-compatible Pardis APIs. The current identity provider integration uses Keycloak. Resource creation is not implemented yet.
 
-The [MVP execution plan](docs/MVP_PLAN.md) tracks completed work, remaining authentication fixes, ECS provisioning milestones, and acceptance tests.
-The [ECS implementation plan](docs/ECS_IMPLEMENTATION_PLAN.md) defines the next steps, proposed tool contracts, write-safety gates, and live test procedure. These write tools are not implemented yet.
+The active [application deployment development plan](docs/APPLICATION_DEPLOYMENT_PLAN.md) defines
+testable stages from source review and a deployment document to approved CCI/ECS deployment.
+It retains the current authentication flow and uses `pardis_roles` for access decisions.
+The [earlier MVP plan](docs/MVP_PLAN.md) and [ECS-only plan](docs/ECS_IMPLEMENTATION_PLAN.md) remain
+historical references. The new application deployment tools are not implemented yet.
+
+D0 development contracts and synthetic CCI/ECS plans are available for offline testing in the
+[D0 development guide](docs/DEVELOPMENT_D0.md). This adds no live tools or cloud operations.
 
 ## Architecture
 

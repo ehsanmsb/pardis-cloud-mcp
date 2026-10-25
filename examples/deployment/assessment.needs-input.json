@@ -1,0 +1,44 @@
+{
+  "source": {
+    "repository_id": "incomplete-http",
+    "revision": "2222222222222222222222222222222222222222"
+  },
+  "stack": "python-http",
+  "build_observation": "No package manifest was supplied.",
+  "start_observation": "Entrypoint raises NotImplementedError; no HTTP server is implemented.",
+  "port": null,
+  "health_path": null,
+  "environment": [
+    {
+      "name": "DATABASE_URL",
+      "kind": "secret",
+      "required": true
+    }
+  ],
+  "dependencies": [
+    {
+      "name": "database",
+      "kind": "database",
+      "purpose": "Application expects a database connection."
+    }
+  ],
+  "findings": [
+    {
+      "severity": "blocker",
+      "provenance": "observed",
+      "message": "Application startup is incomplete.",
+      "evidence": [
+        {
+          "file": "app.py",
+          "line": 9,
+          "observation": "Startup always raises NotImplementedError."
+        }
+      ]
+    }
+  ],
+  "missing_inputs": [
+    "Implement startup and health route.",
+    "Select a database and an authorized secret reference."
+  ],
+  "readiness": "needs_input"
+}

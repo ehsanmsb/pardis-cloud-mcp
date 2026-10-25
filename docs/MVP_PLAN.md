@@ -1,5 +1,9 @@
 # MVP Execution Plan: Provisioning an ECS Through Prompts and MCP
 
+> Historical ECS-only roadmap. As of 2026-10-25, use the
+> [application deployment development plan](APPLICATION_DEPLOYMENT_PLAN.md) for current scope,
+> baseline and staged acceptance. Status and prerequisites below reflect the earlier review.
+
 Baseline: 2026-10-04. Progress review: 2026-10-06, against commit `d0ca1ec`.
 
 This is the status and acceptance reference. See [ECS implementation plan](ECS_IMPLEMENTATION_PLAN.md)
