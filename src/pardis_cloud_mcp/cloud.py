@@ -130,12 +130,13 @@ class PardisCloud:
             self.provider.settings.keycloak_client_id, self.settings.iam_endpoint,
             self.settings.ecs_endpoint, self.settings.project_id, self.settings.idp_id,
             self.settings.vpc_endpoint, self.settings.ims_endpoint, self.settings.eps_endpoint,
+            session.authorization_version,
         ])
         return self.provider._key("cloud", hashlib.sha256(identity.encode()).hexdigest())
 
     async def _exchange(self, session: UserSession) -> CloudCredentials:
         # The claims and token were validated together at login and stored encrypted.
-        # ponytail: require fresh login on ID-token expiry; add coordinated Keycloak refresh later.
+        # The session gate refreshes the upstream ID token before cloud authorization.
         if float(session.claims.get("exp", 0)) <= time.time() + 30:
             raise CloudError("Your sign-in has expired or is about to expire. Sign in to MCP again.")
         id_token = session.keycloak_tokens.get("id_token")
@@ -210,7 +211,8 @@ class PardisCloud:
         if ttl <= 0:
             raise CloudError("Session or cloud credentials expired. Sign in to MCP again.")
         # Cache is encrypted with the existing OAuth store's key and indexed for revocation.
-        await self.provider._save_token(key, credentials, session.session_id, ttl)
+        if not await self.provider._save_token(key, credentials, session.session_id, ttl, session.authorization_version):
+            raise CloudError("Session access changed or expired. Retry with the current session.")
         return credentials
 
     def _list_servers(self, credentials: CloudCredentials, project_id: str, limit: int, marker: str | None,
@@ -245,8 +247,8 @@ class PardisCloud:
             raise CloudError("MCP session is no longer valid. Sign in again.")
         try:
             credentials = await self._credentials(session)
-            if await self.provider.session_for_access_token(access_token) is None:
-                raise CloudError("MCP session was revoked or expired. Sign in again.")
+            if not await self.provider.session_is_current(access_token, session):
+                raise CloudError("MCP session was revoked, expired or its access changed. Retry with the current session.")
             return credentials.projects
         except httpx.HTTPError:
             raise CloudError("IAM request failed. Check connectivity and TLS trust.") from None
@@ -283,13 +285,13 @@ class PardisCloud:
         try:
             credentials = await self._credentials(session)
             project_id = self.resolve_project(credentials, project_id)
-            if await self.provider.session_for_access_token(access_token) is None:
-                raise CloudError("MCP session was revoked or expired. Sign in again.")
+            if not await self.provider.session_is_current(access_token, session):
+                raise CloudError("MCP session was revoked, expired or its access changed. Retry with the current session.")
             servers = await asyncio.to_thread(
                 self._list_servers, credentials, project_id, limit, marker, enterprise_project_id,
             )
-            if await self.provider.session_for_access_token(access_token) is None:
-                raise CloudError("MCP session was revoked or expired. Sign in again.")
+            if not await self.provider.session_is_current(access_token, session):
+                raise CloudError("MCP session was revoked, expired or its access changed. Retry with the current session.")
             outcome = "succeeded"
             return EcsPage(
                 project_id=project_id, enterprise_project_id=enterprise_project_id, cloud_user_id=credentials.user_id,

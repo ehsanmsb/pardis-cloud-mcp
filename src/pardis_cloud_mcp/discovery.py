@@ -178,8 +178,8 @@ class EcsDiscovery:
             elif query.project_id is not None:
                 raise CloudError("Enterprise project discovery is global; omit the regional project_id.")
             endpoint, path, key, params = self._request_spec(query, project_id)
-            if await provider.session_for_access_token(access_token) is None:
-                raise CloudError("MCP session was revoked or expired. Sign in again.")
+            if not await provider.session_is_current(access_token, session):
+                raise CloudError("MCP session was revoked, expired or its access changed. Retry with the current session.")
             data = await self._get(endpoint, path, params, credentials, project_id)
             rows = data[key]
             if not isinstance(rows, list) or not all(isinstance(row, dict) for row in rows):
@@ -194,8 +194,8 @@ class EcsDiscovery:
                 if any(row.get("enterprise_project_id") != query.enterprise_project_id for row in rows):
                     raise CloudError("The service did not honor the selected enterprise project filter.")
             items = [self._option(kind, row) for row in rows]
-            if await provider.session_for_access_token(access_token) is None:
-                raise CloudError("MCP session was revoked or expired. Sign in again.")
+            if not await provider.session_is_current(access_token, session):
+                raise CloudError("MCP session was revoked, expired or its access changed. Retry with the current session.")
             full = len(rows) == query.limit
             outcome = "succeeded"
             return EcsOptionsPage(resource_type=kind, project_id=project_id, query=query, items=items,

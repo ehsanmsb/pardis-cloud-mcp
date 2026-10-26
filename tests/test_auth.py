@@ -64,6 +64,9 @@ def test_oauth_browser_flow_stores_tokens_encrypted_in_redis():
             }
 
         provider._exchange_keycloak_code = fake_exchange
+        async def refresh(session):
+            return session.keycloak_tokens, session.claims
+        provider._refresh_oidc_tokens = refresh
         provider._decode_id_token = lambda token, nonce: {
             "iss": settings.keycloak_issuer_url,
             "sub": "user-123",

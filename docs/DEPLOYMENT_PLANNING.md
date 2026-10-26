@@ -110,7 +110,8 @@ uv run --no-sync --env-file .env pardis-cloud-mcp
 
 Reconnect the agent to refresh its tool list. Use `http://127.0.0.1:8000/mcp` for the default local setup.
 An agent still connected to a previously released remote image will not see these local changes.
-If roles changed upstream, sign out and sign in again, then check `whoami`.
+With v3.3.1, call `whoami` to observe refreshed upstream roles;
+manual re-login is required only when the upstream session/refresh grant is invalid.
 
 For Helm, place the same `tools` and `planning` keys under `config` in your values override and select
 an image containing this increment. The existing ConfigMap template renders them without template changes.
@@ -126,8 +127,9 @@ The chart's default toolset remains `whoami`; this increment does not upgrade or
 - Existing v3.2.0 draft records remain readable by their owner until expiry; their old role/policy
   metadata no longer restricts draft access. Existing `allowed_roles` chart settings are ignored after
   upgrading the application. Remove that setting only when no older replicas/images require it.
-- Cloud roles are captured in the MCP login session. Upstream role changes are not polled
-  continuously; a fresh login is required to update the claims used for federation.
+- With the updated authentication code, protected requests refresh upstream claims before tools run.
+  Role changes affect cloud credential generations without removing ownership of a code-review draft.
+  A disabled/invalid upstream session cannot read drafts either. See [session lifecycle](AUTH_SESSION_LIFECYCLE.md).
 - Plan records and latest-plan pointers use the existing Fernet encryption in Redis. TTL is the
   shorter of configured plan TTL and remaining login-session TTL at creation. Reads do not extend it.
   Default TTL is 30 minutes; accepted configuration range is 60 seconds to 24 hours.

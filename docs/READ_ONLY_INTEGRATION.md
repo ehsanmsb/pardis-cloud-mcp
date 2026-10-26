@@ -102,10 +102,14 @@ possessing the `mcp:tools` scope or a role claim alone does not grant ECS access
 
 ## Expiry and revocation
 
-- Cached cloud credentials can remain usable after the original ID token expires, until the
-  credentials or MCP session expire. They are independently issued credentials.
-- When a new exchange is needed, an ID token expiring within 30 seconds is rejected. **Sign in again**
-  to obtain a fresh ID token. Automatic Keycloak refresh is deliberately deferred.
+- Version 3.3.1 refreshes Central Auth tokens before every protected
+  MCP request. An expired original ID token therefore does not require browser re-login while the
+  upstream refresh/session remains valid. See [session lifecycle](AUTH_SESSION_LIFECYCLE.md).
+- Cached cloud credentials are usable only after that online check and under the current authorization
+  version. Changed roles evict the previous credential generation; new IAM exchange uses the refreshed
+  ID token. Cloud credentials retain their independently issued expiry.
+- IAM exchange still requires an ID token valid beyond its 30-second safety margin. Invalid upstream
+  sessions require re-login; transient Central Auth validation errors fail closed without deleting the session.
 - An expired/revoked MCP session cannot start another cloud call or receive an in-flight result.
   Revocation cannot cancel a request already sent to Pardis. Deleting local credentials does not
   revoke them at IAM; IAM's issued expiry is the external upper bound.
@@ -180,10 +184,10 @@ that an unauthorized user is correctly denied; test the negative case separately
 - Audit entries record time, issuer/subject, operation, project, enterprise-project selector, outcome and internal correlation ID.
   They do not print raw upstream errors, request bodies, tokens or keys. Protect audit logs as identity
   data. Avoid HTTP/SDK debug logging and Redis value dumps.
-- Concurrent cache misses may issue more than one short-lived credential set. This is acceptable for
-  the single-user read-only MVP; distributed single-flight refresh is deferred until needed.
-- Per-client consent, complete refresh/revocation coordination, and production deployment hardening
-  remain open in the MVP plan. This phase is for controlled local testing, not public rollout.
+- Upstream OIDC refresh is serialized across replicas by a Redis lease. Concurrent cloud credential
+  cache misses may still issue more than one short-lived set within the same authorization version;
+  generation-checked writes prevent old-role credentials being reused or restored after a downgrade.
+- Per-client consent, live auth-lifecycle acceptance and production deployment hardening remain open.
 
 ## Official API references
 

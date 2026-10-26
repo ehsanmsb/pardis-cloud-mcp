@@ -37,6 +37,12 @@ MCP agent                 Pardis MCP backend                 Keycloak
 
 Redis stores the registered MCP clients, pending browser-login state, user sessions, Keycloak tokens, and MCP tokens. Every stored value containing credentials or identity data is encrypted with Fernet. Redis keys contain only hashes of bearer tokens.
 
+Version 3.3.1 refreshes Central Auth tokens before every protected
+MCP HTTP request, updates current roles and invalidates old Pardis credential generations after an
+access change. Upstream rejection produces `401`; temporary validation failure blocks access with
+`503` rather than forcing a new login. See [session lifecycle and staging tests](docs/AUTH_SESSION_LIFECYCLE.md).
+The deployed v3.3.0 image needs an upgrade before this behavior applies.
+
 The two clients are different:
 
 - The **Keycloak client** (`OIDC_CLIENT_ID`) is confidential. Its secret exists only in this backend/container.
@@ -106,7 +112,7 @@ uv run pytest
 ## Identity attributes (`whoami`)
 
 By default, `whoami` returns `username`, `email`, and `pardis_roles`, plus
-these optional organization attributes from the verified ID token stored at sign-in:
+these optional organization attributes from the verified ID token refreshed for the request:
 
 | ID token claim (case-sensitive) | `whoami` field |
 | --- | --- |
@@ -126,7 +132,7 @@ For example, `Department: Tech`, `Team: DevOps`, and `Venture: Snapp` produce:
 These fields describe the user; they do not change IAM group mapping or grant cloud access.
 `whoami` also returns `pardis_roles`, for example `["team-marketing-readonly"]`, from the
 ID token's `pardis_roles` claim. It must be a list of strings; an absent, null, or empty claim
-returns `[]`. These are the identity provider's roles captured at sign-in, not a live list of
+returns `[]`. These are the identity provider's roles refreshed for the request, not a live list of
 IAM groups or effective cloud permissions.
 
 For troubleshooting, call `whoami` with `{"include_details": true}` to also return `subject`
@@ -136,9 +142,9 @@ the default response and when `include_details` is `false`; they are not returne
 Clients that previously read these keys must now explicitly request details. Backend identity,
 session storage, and authorization are unchanged.
 
-After adding or changing the claims in the identity provider, sign out and sign in to MCP
-again to capture a new ID token. To verify, call `whoami` from your MCP client after deploying
-or restarting the updated server. Raw tokens and other arbitrary claims are not returned.
+After changing roles or mapped attributes, call `whoami` after deploying the updated authentication
+code. No manual re-login is needed while upstream refresh remains valid. Raw tokens and other
+arbitrary claims are not returned. Claims still depend on the configured mapper and live upstream state.
 
 ## Read-only Pardis integration
 
@@ -279,5 +285,6 @@ move those release tags. See [the release guide](docs/RELEASE.md) for setup, exa
 - This implementation revokes every MCP access/refresh token in the same login session when one is revoked.
 - Put rate limiting in front of public `/register`, `/authorize`, and `/token` endpoints before production deployment.
 - Cloud endpoints are operator configuration, never tool arguments. Selected projects must appear in the user's IAM project list. TLS verification is enabled; cloud redirects are not followed.
-- Cloud credentials are encrypted, isolated by session and configuration, and cached only until their expiry safety margin or session expiry, whichever is sooner.
-- This is a local, controlled MVP. Per-client consent and remaining refresh/revocation coordination in the MVP plan must be completed before multi-user or public deployment.
+- Cloud credentials are encrypted, isolated by session, authorization version and configuration, and cached only until their expiry safety margin or session expiry, whichever is sooner.
+- Online validation blocks stale-identity fallback during provider outages. Local revocation cannot undo a cloud request already sent or revoke IAM's independently issued credentials remotely.
+- This is a controlled MVP. Per-client consent, live session-lifecycle acceptance and operational hardening remain necessary before public deployment.

@@ -59,7 +59,7 @@ flowchart LR
 | --- | --- | --- |
 | Authentication and federation | Implemented; user-confirmed real login and ECS listing | Accepted foundation for this roadmap, not a claim of production certification |
 | Role-based cloud isolation | HR role saw the test ECS; replacing it with Marketing denied explicit HR access and returned an empty permitted list | Positive Marketing access to an existing Marketing resource was not tested |
-| Identity tool | Organization attributes, `pardis_roles`, opt-in technical details | Claims reflect sign-in; no immediate upstream role-revocation guarantee |
+| Identity tool and session freshness | Current verified claims and per-request upstream refresh implemented in v3.3.1 | Signed-JWT and concurrency tests pass; live Central Auth/Pardis acceptance pending; no push-event cancellation of in-flight cloud requests |
 | Existing toolset | `whoami`, `list_projects`, `list_ecs`; YAML selection | No source review, deployment, approval, application catalog or CCI adapter |
 | Tests and release | 83 local tests passed; v3.0.0 CI and image publication succeeded | Cloud writes and new workflows remain untested |
 | Storage and operations | Encrypted Redis sessions, basic health, ECS audit events | No durable deployment ledger, comprehensive audit or alerting yet |
@@ -221,8 +221,9 @@ role. A later portal can use the same approval contract. Client-side tool approv
 not backend evidence of the human's decision.
 
 Recheck current session, role policy, target scope, quota and cost at execution. Bind approval to the
-exact requester/app/action/plan hash and expiry. Current roles mean verified session claims under the
-existing re-login policy; do not claim immediate Central Auth role revocation.
+exact requester/app/action/plan hash and expiry. Current roles require a new online session check at
+actual execution, including queued/resumed operations. Do not reuse an earlier request's authentication
+context or promise cancellation of a cloud request already sent. See [session lifecycle](AUTH_SESSION_LIFECYCLE.md).
 
 Before any submission, atomically persist/claim the operation and its idempotency key. Same actor/key
 and same request return the existing operation; changed parameters with the same key are rejected.

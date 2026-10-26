@@ -87,29 +87,29 @@ MCP client. An existing SSO session does not establish consent for a new MCP cli
 
 OAuth consent is separate from approval of an individual `create_ecs` call.
 
-### AUTH-02: Session, refresh and revocation coordination — partial
+### AUTH-02: Session, refresh and revocation coordination — implemented in v3.3.1; live acceptance pending
 
 - [x] Require a live matching session for tokens and recheck it around cloud calls.
-- [x] Consume authorization codes and refresh tokens with Redis `GETDEL`.
-- [ ] Coordinate session validation, token issuance/indexing and revocation atomically.
-- [ ] Cap access/refresh token lifetimes to the remaining absolute session lifetime.
-- [ ] Test concurrent refresh/revocation, replay and expiry, not only leftover-token rejection.
+- [x] Consume authorization codes with `GETDEL`; consume outer refresh tokens atomically with token issuance.
+- [x] Coordinate live session checks, token/cache issuance and revocation using watched Redis transactions.
+- [x] Cap access/refresh token lifetimes to the remaining absolute session lifetime.
+- [x] Test concurrent refresh/revocation, replay, lost leases and expiry.
 
-Session TTL is fixed at login (default eight hours). MCP refresh issues MCP tokens but does not
-extend the session. Active-session checks do not prove the whole issuance/revocation sequence atomic.
+Session TTL stays fixed at login (default eight hours). Upstream and MCP token refresh do not extend
+that absolute lifetime. See [the v3.3.1 session-lifecycle increment](AUTH_SESSION_LIFECYCLE.md).
 
-### AUTH-03: Expiry policy — implemented fallback, acceptance partial
+### AUTH-03: Online refresh and expiry policy — implemented in v3.3.1; acceptance pending
 
 - [x] Check ID-token expiry before IAM exchange and cloud expiry before credential reuse.
-- [x] Require fresh login when another ID token is needed; automatic Keycloak refresh is deferred.
+- [x] Refresh upstream tokens per protected HTTP request; update roles and invalidate cloud credential generations.
 - [ ] Verify expiry/re-login in a real client, including recovery of an existing operation.
-- [ ] Record logout/revocation enforcement limits in the handoff.
+- [x] Record logout/revocation enforcement limits in the session-lifecycle guide.
 
 The backend requests 900-second cloud credentials, uses IAM's returned expiry, and caches with a
 30-second margin and remaining-session TTL cap. Cached credentials can outlive the original ID token.
-Keycloak logout is not propagated immediately: no back-channel logout or continuous upstream session
-check exists. Local revocation cannot cancel a request already sent or remotely revoke IAM credentials.
-Do not promise immediate Keycloak-logout enforcement.
+The updated code checks upstream session state through refresh on each protected request; it has no
+backchannel/event push subscription. Local revocation cannot cancel a request already sent or remotely
+revoke IAM credentials. Enforcement starts at the next successful online validation of current state.
 
 ### TEST-01 and DEPLOY-01 — partial
 

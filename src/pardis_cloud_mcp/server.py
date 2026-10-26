@@ -19,6 +19,7 @@ from pardis_cloud_mcp.auth_page import home_page, not_found_page
 from pardis_cloud_mcp.cloud import CloudSettings
 from pardis_cloud_mcp.config import PlanningConfig, load_config
 from pardis_cloud_mcp.toolset import register_tools
+from pardis_cloud_mcp.session_guard import SessionGuardMiddleware
 
 
 @dataclass(frozen=True)
@@ -121,6 +122,7 @@ class PardisMCPServer(MCPServer):
     def streamable_http_app(self, **kwargs: Any) -> Starlette:
         app = super().streamable_http_app(**kwargs)
         app.add_exception_handler(404, _not_found)
+        app.add_middleware(SessionGuardMiddleware)
         return app
 
 

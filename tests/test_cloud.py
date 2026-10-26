@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+import secrets
 import time
 from urllib.parse import parse_qs, urlsplit
 from dataclasses import replace
@@ -25,6 +26,10 @@ def make_cloud():
         "https://iam.cloud.example.com", "https://ecs.cloud.example.com", PROJECT, "mcp-idp",
     ))
     provider = RedisKeycloakOAuthProvider(settings, fakeredis.aioredis.FakeRedis(decode_responses=True))
+    # Cloud adapter tests isolate federation/SDK behavior; real upstream refresh is tested separately.
+    async def refresh(session):
+        return session.keycloak_tokens, session.claims
+    provider._refresh_oidc_tokens = refresh
     return settings, provider, PardisCloud(settings.cloud, provider)
 
 
@@ -35,6 +40,7 @@ async def login(provider, subject="alice", expires_in=300, claims=None):
                 "aud": provider.settings.keycloak_client_id, "exp": time.time() + expires_in,
                 **(claims or {})},
         keycloak_tokens={"id_token": f"private-id-token-{subject}"},
+        authorization_version=secrets.token_hex(16),
     )
     await provider._set_model(provider._key("session", session.session_id), session, 3600)
     tokens = await provider._mint_tokens(client_id="test-client", scopes=["mcp:tools"],
@@ -311,7 +317,7 @@ def test_expired_cache_reexchanges_and_changed_trust_does_not_reuse(monkeypatch)
         other = PardisCloud(replace(settings.cloud, project_id="b" * 32), provider)
         assert other._cache_key(session) != cloud._cache_key(session)
         provider.settings = replace(settings, keycloak_issuer_url="https://other.example.com/realm")
-        with pytest.raises(CloudError, match="OIDC configuration"):
+        with pytest.raises(CloudError, match="session"):
             await cloud.list_ecs(tokens.access_token)
         assert len(calls) == 6
         await provider.redis.aclose()

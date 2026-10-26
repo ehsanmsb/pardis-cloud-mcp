@@ -43,7 +43,7 @@ def register_tools(
     planning = PlanningService(provider, planning_config) if planning_config is not None else None
 
     def whoami(include_details: bool = False) -> Identity:
-        """Return the signed-in user's username, email, organization attributes and pardis_roles. Set include_details=true only for debugging to also return subject, client_id and scopes. Roles are verified ID token claims captured at sign-in, not a live list of effective IAM permissions."""
+        """Return the signed-in user's username, email, organization attributes and pardis_roles from the ID token refreshed for this request. Set include_details=true only for debugging to also return subject, client_id and scopes. These roles are not a live list of effective Pardis IAM permissions."""
         token = get_access_token()
         if token is None:
             raise ToolError("Authentication context is unavailable")
