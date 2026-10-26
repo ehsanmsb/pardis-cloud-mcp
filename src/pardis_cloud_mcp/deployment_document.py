@@ -65,7 +65,7 @@ def render_document(name: str, assessment: SourceAssessment, target: Target, pre
               "- Choose the build/delivery workflow and review the final configuration.", "",
               "## Cost, quota and approval", "",
               "Cost: **unknown**, not zero. Quota: **not checked**. Approval: **not requested**.",
-              "Your role permits preparing this document; it does not prove permission to deploy its resources.", "",
+              "Any signed-in user can prepare this document. Actual cloud permissions determine whether its resources can be deployed.", "",
               "## Proposed delivery steps", "",
               "1. Resolve the outstanding questions and review the final plan.",
               "2. Approve the exact configuration after access, cost and quota checks.",

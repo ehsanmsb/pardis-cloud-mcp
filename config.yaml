@@ -9,9 +9,6 @@ tools:
     - get_deployment_plan
   disabled: []
 
-# Permission to create advisory documents only; does not grant cloud provisioning access.
+# Advisory documents are available to every authenticated user; cloud access is unchanged.
 planning:
-  allowed_roles:
-    - team-hr-readonly
-    - team-marketing-readonly
   plan_ttl_seconds: 1800

@@ -104,7 +104,7 @@ def register_tools(
     async def get_deployment_plan(
         plan_id: Annotated[str | None, Field(pattern=r"^plan-[a-f0-9]{32}$")] = None,
     ) -> PlanDocument:
-        """Retrieve the signed-in user's saved draft document. Omit plan_id for their latest plan; do not ask the user to copy an ID. Requires current planning access and original role overlap. Expired or inaccessible plans must be prepared again. This does not deploy anything."""
+        """Retrieve the signed-in user's own saved draft document, regardless of reader/full role changes. Omit plan_id for their latest plan; do not ask the user to copy an ID. Requires an active session and ownership. Expired or inaccessible plans must be prepared again. This does not deploy anything."""
         return await planning_call("get_deployment_plan", plan_id=plan_id)
 
     read_only = ToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True)
@@ -130,7 +130,7 @@ def register_tools(
     planning_names = {"get_deployment_options", "prepare_deployment", "get_deployment_plan"}
     if planning_config is None:
         if requested != {"*"} and selected & planning_names:
-            raise ValueError("Selected planning tools require planning.allowed_roles in YAML configuration")
+            raise ValueError("Selected planning tools require a planning block in YAML configuration")
         selected -= planning_names
     cloud_names = {handler.__name__ for handler, needs_cloud, _ in catalog if needs_cloud}
     if cloud_settings is None:

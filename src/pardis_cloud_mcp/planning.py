@@ -50,8 +50,6 @@ class PlanDocument(BaseModel):
 
 class StoredPlan(BaseModel):
     owner: Actor
-    granted_roles: list[str]
-    policy_hash: str
     created_at: int
     expires_at: int
     assessment: SourceAssessment
@@ -68,19 +66,12 @@ class PlanningService:
     def __init__(self, provider: RedisKeycloakOAuthProvider, config: PlanningConfig):
         self.provider = provider
         self.config = config.model_copy(deep=True)
-        policy = json.dumps(config.model_dump(), sort_keys=True, separators=(",", ":"))
-        self.policy_hash = hashlib.sha256(policy.encode()).hexdigest()
 
-    async def _identity(self, access_token: str) -> tuple[UserSession, Actor, list[str]]:
+    async def _identity(self, access_token: str) -> tuple[UserSession, Actor]:
         session = await self.provider.session_for_access_token(access_token)
         if session is None:
             raise PlanningError("Sign in again to prepare or view a deployment plan.")
-        raw_roles = session.claims.get("pardis_roles", [])
-        roles = (sorted(set(raw_roles) & set(self.config.allowed_roles))
-                 if isinstance(raw_roles, list) and all(isinstance(role, str) for role in raw_roles) else [])
-        if not roles:
-            raise PlanningError("Your current roles do not allow deployment planning. Ask the MCP operator to check planning access.")
-        return session, Actor(issuer=self.provider.settings.keycloak_issuer_url, subject=session.subject), roles
+        return session, Actor(issuer=self.provider.settings.keycloak_issuer_url, subject=session.subject)
 
     def _owner_key(self, owner: Actor) -> str:
         return self.provider._key("latest_plan", self.provider._digest(owner.model_dump_json()))
@@ -99,7 +90,7 @@ class PlanningService:
 
     async def prepare(self, access_token: str, assessment: SourceAssessment,
                       application_name: str, target: Target) -> PlanDocument:
-        session, owner, roles = await self._identity(access_token)
+        session, owner = await self._identity(access_token)
         if len(assessment.model_dump_json().encode()) > 128 * 1024:
             raise PlanningError("The code review is too large. Send a shorter assessment without raw source.")
         remaining = await self.provider.redis.ttl(self.provider._key("session", session.session_id))
@@ -115,9 +106,9 @@ class PlanningService:
             document_markdown=render_document(application_name, assessment, target, preset),
         )
         canonical = json.dumps({"assessment": assessment.model_dump(), "preset": preset.model_dump(),
-                                "document": document.model_dump(), "policy_hash": self.policy_hash},
+                                "document": document.model_dump()},
                                sort_keys=True, separators=(",", ":"))
-        stored = StoredPlan(owner=owner, granted_roles=roles, policy_hash=self.policy_hash,
+        stored = StoredPlan(owner=owner,
                             created_at=created, expires_at=expires, assessment=assessment, preset=preset,
                             content_hash=hashlib.sha256(canonical.encode()).hexdigest(), document=document)
         await self._identity(access_token)
@@ -127,7 +118,7 @@ class PlanningService:
         return document
 
     async def get(self, access_token: str, plan_id: str | None = None) -> PlanDocument:
-        _, owner, roles = await self._identity(access_token)
+        _, owner = await self._identity(access_token)
         if plan_id is None:
             latest = await self.provider._get_model(self._owner_key(owner), LatestPlan)
             plan_id = latest.plan_id if isinstance(latest, LatestPlan) else None
@@ -135,8 +126,7 @@ class PlanningService:
         if plan_id is None:
             raise PlanningError(unavailable)
         stored = await self.provider._get_model(self.provider._key("deployment_plan", plan_id), StoredPlan)
-        if (not isinstance(stored, StoredPlan) or stored.owner != owner or stored.expires_at <= time.time()
-                or stored.policy_hash != self.policy_hash or not set(stored.granted_roles) & set(roles)):
+        if not isinstance(stored, StoredPlan) or stored.owner != owner or stored.expires_at <= time.time():
             raise PlanningError(unavailable)
         await self._identity(access_token)
         return stored.document

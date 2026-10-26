@@ -4,6 +4,9 @@ This increment adds a usable, authenticated planning flow on top of v3.1.0's con
 It creates advisory documents only. No application is built, no Pardis API is called by these
 planning tools, and no resource is created. A successful plan is not deployment approval.
 
+The authentication-only planning rules below apply from v3.2.1. A deployed v3.2.0 image still
+enforces its original planning role allowlist until the image is upgraded.
+
 ## Try it with prompts
 
 Connect your agent to the updated MCP server and sign in. Give the agent access to the application
@@ -44,7 +47,7 @@ with no secret value. The agent should explain blockers rather than invent deplo
 
 | Tool | Behavior |
 | --- | --- |
-| `get_deployment_options` | Checks planning access and returns advisory CCI/ECS targets, initial size suggestions and review guidance |
+| `get_deployment_options` | Requires sign-in and returns advisory CCI/ECS targets, initial size suggestions and review guidance |
 | `prepare_deployment` | Validates an agent-supplied assessment, renders Markdown and saves an encrypted owner-only draft |
 | `get_deployment_plan` | Returns a specific owner-authorized draft, or the owner's latest draft when no ID is supplied |
 
@@ -79,17 +82,25 @@ tools:
     - get_deployment_plan
   disabled: []
 planning:
-  allowed_roles:
-    - team-hr-readonly
-    - team-marketing-readonly
   plan_ttl_seconds: 1800
 ```
 
-These two role names are the approved local test policy. For another environment, explicitly configure
-the desired Central Auth `pardis_roles`. This permission allows document preparation only and never
-adds IAM privileges. Keep `list_projects` and `list_ecs` enabled as well if configured cloud reads are needed.
+Every authenticated user can prepare and read their own advisory documents, including readers and
+full users. No role allowlist is needed for planning. The old `planning.allowed_roles` field is accepted
+for chart upgrades but ignored. Keep `list_projects` and `list_ecs` enabled as well if configured cloud reads are needed.
 Planning-only mode does not require cloud endpoints. Explicitly selecting planning tools without
-`planning.allowed_roles` fails startup; wildcard selection skips them when planning is unconfigured.
+a `planning` block fails startup; wildcard selection skips them when planning is unconfigured.
+
+| Capability | Readers | Full |
+| --- | --- | --- |
+| Review authorized code and prepare/retrieve own draft | Yes | Yes |
+| Read Pardis resources | Within the user's team/cloud grants | Within the user's team/cloud grants |
+| Create or modify Pardis resources | No | Within the user's team/cloud grants; write tools are not implemented yet |
+
+Central Auth roles identify team/access level through the existing federation mapping to Pardis IAM.
+The MCP tool catalog is deployment-wide; listing a tool does not authorize its cloud actions. No role
+suffix parser or extra team-attribute authorization is introduced. Every future write must use the
+user's credentials and respect current IAM permissions; a readable draft cannot authorize a write.
 
 Restart the server from the repository root using the existing private `.env`:
 
@@ -109,13 +120,14 @@ The chart's default toolset remains `whoami`; this increment does not upgrade or
 
 - Identity comes from the authenticated session, using issuer plus subject. Tool arguments cannot
   select the owner or supply roles. `Department`, `Team`, `Venture` and `Vertical` grant nothing.
-- A user needs at least one allowed role. Multiple matching roles permit the same advisory tools;
-  they do not enlarge sizes or grant access to additional cloud targets.
-- Retrieval requires the same owner, an active session, current planning permission, an overlap
-  with the plan's original allowed roles and an unchanged planning policy hash. HR-to-Marketing
-  role changes therefore prevent retrieving an HR-only draft, even for the same person.
-- Checks use the roles captured in the current MCP login session. Upstream role changes are not
-  polled continuously; a fresh login is required. Another user cannot access a plan even with the same role.
+- Retrieval requires the same owner and an active session. Changing from full to readers or changing
+  teams does not remove access to the user's own code-review drafts. No cloud authorization follows
+  from retrieving a draft. Another user cannot access it even with the same role.
+- Existing v3.2.0 draft records remain readable by their owner until expiry; their old role/policy
+  metadata no longer restricts draft access. Existing `allowed_roles` chart settings are ignored after
+  upgrading the application. Remove that setting only when no older replicas/images require it.
+- Cloud roles are captured in the MCP login session. Upstream role changes are not polled
+  continuously; a fresh login is required to update the claims used for federation.
 - Plan records and latest-plan pointers use the existing Fernet encryption in Redis. TTL is the
   shorter of configured plan TTL and remaining login-session TTL at creation. Reads do not extend it.
   Default TTL is 30 minutes; accepted configuration range is 60 seconds to 24 hours.
@@ -132,8 +144,8 @@ uv run --locked pytest -q
 ```
 
 HTTP tests use simulated authentication/Redis and cover both target documents, incomplete review,
-role denial, organization attributes not granting access, owner isolation, role changes, expiry,
-revocation, policy changes, storage errors, encrypted persistence, revision retrieval and tool selection.
+reader/full and absent-role planning, owner isolation, role changes, expiry, revocation, compatibility
+with older configuration/records, storage errors, encrypted persistence, revision retrieval and tool selection.
 The planning path is tested without cloud configuration and with cloud exchange forbidden.
 Complete the prompts above with a real agent and Central Auth login as the manual acceptance check.
 

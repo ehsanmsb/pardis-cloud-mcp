@@ -189,9 +189,10 @@ now comes exclusively from YAML, and startup rejects those old variables to prev
 - Available names are `whoami`, `list_projects`, `list_ecs`, `get_deployment_options`,
   `prepare_deployment`, and `get_deployment_plan` (case-sensitive).
 - `tools.enabled` is required; `[]` enables no tools. `tools.disabled` defaults to `[]` and takes precedence.
-- The checked-in configuration enables all six current tools. Its `planning.allowed_roles` enables
-  document preparation for the two existing test roles only; it does not grant cloud access.
-  Configure your own allowed roles before using it in another environment. New tools stay disabled until added.
+- The checked-in configuration enables all six current tools. Every signed-in user can prepare and
+  read their own advisory documents. Readers and full users have the same planning tools; actual
+  Pardis resource access follows their team/IAM grants. Planning grants no cloud write access.
+  New tools stay disabled until added.
 - Optionally, `enabled: ["*"]` selects every available tool, including future additions. YAML requires
   quotes around the wildcard. In this mode, cloud tools are skipped when cloud configuration is absent,
   and planning tools are skipped when `planning` configuration is absent.

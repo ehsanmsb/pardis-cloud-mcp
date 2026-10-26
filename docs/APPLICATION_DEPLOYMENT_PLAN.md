@@ -21,7 +21,11 @@ deployment, and exposes its endpoint and bounded application logs.
 
 - Preserve the current HTTP transport, Central Auth login, identity provider federation, encrypted
   Redis sessions, per-user temporary cloud credentials, and existing read-only tools.
-- Use verified `pardis_roles` plus server-side role policy and actual Pardis permissions for access.
+- Every authenticated user may use planning tools and access their own code-review drafts. Reader
+  and full users have the same MCP tool catalog. Verified `pardis_roles` identify team/access level
+  through the existing federation mapping: readers cannot write cloud resources; full users may write
+  within their team's actual Pardis grants. Recheck cloud permissions for each operation; a plan or
+  a tool's presence grants nothing. Do not hardcode team roles as a planning allowlist.
   `Department`, `Team`, `Venture`, and `Vertical` are display metadata, never authorization inputs.
 - Retain actor identity (`issuer` + `subject`) internally for ownership, approval and audit even though
   `whoami` hides technical details by default. Never accept actor identity or roles from tool arguments.
@@ -75,7 +79,7 @@ does not itself authorize a release or cloud mutation.
 | Stage | Deliverable | Status | Acceptance evidence |
 | --- | --- | --- | --- |
 | D0 | Contracts and synthetic application fixtures | Released v3.1.0 | `tests/test_deployment.py`, JSON examples and [D0 test guide](DEVELOPMENT_D0.md) |
-| D1 | Role policy and deployment options | Partial: planning role gate and advisory options; live target bindings pending | `tests/test_planning.py` |
+| D1 | Cloud access scope and deployment options | Partial: authenticated advisory options for all users; live target bindings pending | `tests/test_planning.py` |
 | D2 | Source assessment intake | Advisory intake implemented in `prepare_deployment`; source registry/provenance verification pending | Valid/incomplete assessment HTTP tests; real-agent review pending |
 | D3 | Stored plan and Markdown deployment document | Owner-only preview implemented; execution-ready binding pending | Encrypted persistence, role/owner isolation, expiry, CCI/ECS documents; manual acceptance pending |
 | D4 | Approval, quota and idempotent operation state | Not started | — |
@@ -99,18 +103,20 @@ do not replace existing tools or introduce a general-purpose command-execution t
 
 | Tool | Input outline | Output and behavior |
 | --- | --- | --- |
-| `get_deployment_options` | None | Implemented: role-gated advisory CCI/ECS targets, review stacks and fixed suggestions; live bindings pending |
+| `get_deployment_options` | None | Implemented: advisory CCI/ECS targets, review stacks and fixed suggestions for all authenticated users; live bindings pending |
 | `prepare_deployment` | Agent assessment, application name, candidate target | Implemented: owner-only draft, expiry and readable Markdown; fixed advisory sizing, no provisioning |
-| `get_deployment_plan` | Optional `plan_id`; omit for latest | Implemented: owner-authorized exact saved document with current-session role check |
+| `get_deployment_plan` | Optional `plan_id`; omit for latest | Implemented: owner-authorized exact saved document with active-session check |
 | `deploy_app` | `plan_id`, `idempotency_key` | Existing or newly submitted `operation_id`; no replacement deployment parameters or caller-provided approval boolean |
 | `get_deployment_status` | `operation_id` | Actual stages, resource identifiers and endpoint when verified |
 | `get_app_logs` | Application identifier, bounded time range and result limit | Authorized, redacted logs with truncation information |
 
 Records needed, added only as their stage requires them:
 
-- **Role policy:** maps known `pardis_roles` to allowed actions, target bindings, stacks and limits.
+- **Cloud access:** the existing federation maps `pardis_roles` to team and reader/full IAM grants.
   A target binding contains the regional IAM project and applicable Enterprise Project/CCI scope.
-  Unknown roles grant no new deployment capability; policy never replaces cloud IAM enforcement.
+  Operator catalogs may describe approved placement and supported recipes, but must not introduce
+  a separate allowlist for using planning tools or replace cloud IAM enforcement. D0 role-policy
+  fixtures are historical schema examples, not the live authorization mechanism.
 - **Application record:** actor owner, access-policy binding, source reference and resource identifiers.
   Other users may access it only through an explicit role-based sharing rule. Never trust an arbitrary
   application/artifact/operation ID merely because the caller supplied it.
@@ -141,21 +147,23 @@ until D5/D6; use explicit unresolved fields rather than inventing capabilities.
 - Manual: validate the two fixtures locally and inspect the normalized output without cloud access.
 - Exit: contracts and examples reviewed; invalid fixture rejected; no new live tools or writes.
 
-### D1 — Role policy and deployment options
+### D1 — Cloud access scope and deployment options
 
-Add one shared authorization path for new application tools, based on authenticated actor and
-`pardis_roles`. Use a small operator-maintained YAML role/target catalog first; do not build a policy
-service. Validate config at startup. Existing read-only tools retain their current cloud enforcement.
+Keep planning available to every authenticated user and drafts owner-only. Use the existing
+federation and user-scoped credentials to discover actual cloud access. Reader/full roles describe
+cloud permissions, not tool visibility. Do not infer authority from a role suffix or organization
+attribute, and do not introduce duplicate per-team planning grants in YAML.
 
-Expose `get_deployment_options`. Merge explicitly granted role capabilities without inventing grants
-from team names; document combination rules and limits. Return no approved deployment options for a
-user without a matching policy. Start audit events for allow/deny decisions in this stage.
+Expose `get_deployment_options` with an explicit distinction between advisory suggestions and
+live-verified accessible placement. Readers can plan deployments but cannot execute writes. Full
+users can execute only supported operations in their authorized team scope, after plan validation
+and approval. A full role does not bypass IAM, quota or supported-adapter limits.
 
-- Automated: role A/role B/unknown/missing roles, multi-role limits, ID tampering, disabled tools and
-  invalid config. Changing `Department` or `Team` does not change decisions. Rejected calls make no
-  downstream requests.
-- Manual: log in with each existing test role and compare available options; call a disabled tool.
-- Exit: predictable role-derived scope and structured, secret-free denial events.
+- Automated: reader/full both plan, cross-user draft denial, anonymous/revoked session denial,
+  disabled tools and invalid config. Later write adapters must test reader denial, permitted full
+  writes and cross-team denial, without shared administrator credentials.
+- Manual: compare planning as reader and full, then compare live resource visibility with Console.
+- Exit: predictable cloud scope, independent planning access and secret-free audit events.
 
 ### D2 — Source intake and agent-assisted code review
 
@@ -178,8 +186,9 @@ The actual build recipe must later be selected from supported templates, not exe
 
 ### D3 — Deployment plan and readable document
 
-Implement `prepare_deployment` and `get_deployment_plan`. Resolve requested choices against role
-policy, assessment and supported capabilities. Store the canonical plan encrypted in Redis and render
+Implement `prepare_deployment` and `get_deployment_plan` for every authenticated user. Resolve
+advisory choices against the assessment and supported capabilities; distinguish actual cloud-access
+checks from the right to prepare a document. Store the canonical plan encrypted in Redis and render
 Markdown from that same record. Store the document or its reproducible version with the plan.
 
 Document: review summary/blockers, proposed CCI/ECS architecture and rationale, services and dependency

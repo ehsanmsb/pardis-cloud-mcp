@@ -21,7 +21,8 @@ class ToolConfig(BaseModel):
 class PlanningConfig(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
-    allowed_roles: list[Name] = Field(min_length=1, max_length=64)
+    # Accept older chart values during upgrades; planning authorization uses session ownership only.
+    allowed_roles: list[Name] | None = Field(default=None, max_length=64, deprecated=True, exclude=True)
     plan_ttl_seconds: int = Field(default=1800, ge=60, le=86400)
 
 
