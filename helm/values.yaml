@@ -4,7 +4,7 @@ fullnameOverride: ""
 # Main-branch CI publishes here. Select an existing release tag before deployment.
 image:
   repository: ghcr.io/ehsanmsb/pardis-cloud-mcp
-  tag: "3.2.0"
+  tag: "3.2.1"
   pullPolicy: IfNotPresent
 imagePullSecrets: []
 

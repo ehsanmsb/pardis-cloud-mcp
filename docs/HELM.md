@@ -8,15 +8,17 @@ The initial chart configuration enables only `whoami`. Cloud tools can be enable
 Pardis endpoints and IdP. This chart packages the current MVP; the authentication limitations in
 `MVP_PLAN.md` still apply.
 
-To enable the new planning tools, add them under `config.tools.enabled` and set
-`config.planning.allowed_roles` and `config.planning.plan_ttl_seconds` in your values override.
+To enable planning tools, add them under `config.tools.enabled` and set
+`config.planning.plan_ttl_seconds` in your values override. Planning is available to all authenticated
+users. Existing `config.planning.allowed_roles` is accepted for upgrades but ignored by the updated
+application; keep it while any v3.2.0 replica/image still requires the old configuration.
 See [the planning configuration and staging prompts](DEPLOYMENT_PLANNING.md).
 The existing ConfigMap template supports these settings; no extra Secret or template is required.
 
 ## 1. Prepare the image and cluster
 
 The [release workflow](RELEASE.md) publishes images to `ghcr.io/ehsanmsb/pardis-cloud-mcp`.
-The chart pins `appVersion` and `image.tag` to `3.2.0`. Confirm its release workflow has succeeded
+The chart pins `appVersion` and `image.tag` to `3.2.1`. Confirm its release workflow has succeeded
 before deploying; changing chart metadata alone does not publish an image. CI builds for `linux/amd64`.
 For private GHCR packages, configure `imagePullSecrets` with credentials authorized to pull the package.
 
