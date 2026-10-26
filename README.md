@@ -15,6 +15,9 @@ follow the [prompt-based planning guide](docs/DEPLOYMENT_PLANNING.md). The agent
 using its own authorized file access; MCP saves a readable advisory document in encrypted Redis.
 The v3.4.0 [ECS selection flow](docs/ECS_PLAN_SELECTION.md) records real cloud choices and actual
 flavor sizing after backend catalog checks. It remains a draft; no resource creation is available.
+The [live staging report](docs/STAGING_ACCEPTANCE_3_4_0.md) records successful reader planning and
+owner-isolation tests, plus the EPS authentication, network visibility and IMS issues still blocking
+acceptance of a complete real ECS selection.
 
 Example prompt, after connecting the updated local MCP server:
 
