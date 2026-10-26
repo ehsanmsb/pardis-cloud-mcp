@@ -18,9 +18,13 @@ The existing ConfigMap template supports these settings; no extra Secret or temp
 ## 1. Prepare the image and cluster
 
 The [release workflow](RELEASE.md) publishes images to `ghcr.io/ehsanmsb/pardis-cloud-mcp`.
-The chart pins `appVersion` and `image.tag` to `3.3.0`. Confirm its release workflow has succeeded
+The chart pins `appVersion` and `image.tag` to `3.3.1`. Confirm its release workflow has succeeded
 before deploying; changing chart metadata alone does not publish an image. CI builds for `linux/amd64`.
 For private GHCR packages, configure `imagePullSecrets` with credentials authorized to pull the package.
+
+Version 3.3.1 adds automatic upstream refresh and online session validation. Keep the existing
+Secret, Redis prefix and Fernet key stable. Upgrade/drain every replica before relying on current-role
+enforcement; older replicas still use the previous behavior. See [session lifecycle](AUTH_SESSION_LIFECYCLE.md).
 
 For read-only ECS catalog discovery, enable `list_ecs_options` under `config.tools.enabled`.
 Set verified `env.PARDIS_VPC_ENDPOINT`, `env.PARDIS_IMS_ENDPOINT` and `env.PARDIS_EPS_ENDPOINT` for
