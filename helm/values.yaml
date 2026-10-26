@@ -4,7 +4,7 @@ fullnameOverride: ""
 # Main-branch CI publishes here. Select an existing release tag before deployment.
 image:
   repository: ghcr.io/ehsanmsb/pardis-cloud-mcp
-  tag: "3.3.1"
+  tag: "3.4.0"
   pullPolicy: IfNotPresent
 imagePullSecrets: []
 
@@ -35,6 +35,7 @@ env:
   PARDIS_ECS_ENDPOINT: ""
   PARDIS_IDP_ID: ""
   # Optional read-only ECS discovery catalogs; configure verified Pardis origins.
+  # Use the VPC service origin, not the separate VPC Endpoint service.
   PARDIS_VPC_ENDPOINT: ""
   PARDIS_IMS_ENDPOINT: ""
   PARDIS_EPS_ENDPOINT: ""
