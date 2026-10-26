@@ -13,6 +13,7 @@ from pardis_cloud_mcp.auth import RedisKeycloakOAuthProvider
 from pardis_cloud_mcp.cloud import ENTERPRISE_PROJECT_PATTERN, CloudError, CloudProject, CloudSettings, EcsPage, PardisCloud
 from pardis_cloud_mcp.config import PlanningConfig
 from pardis_cloud_mcp.deployment import Name, SourceAssessment, Target
+from pardis_cloud_mcp.discovery import DiscoveryQuery, EcsDiscovery, EcsOptionsPage
 from pardis_cloud_mcp.planning import PlanDocument, PlanningError, PlanningOptions, PlanningService
 
 
@@ -91,6 +92,16 @@ def register_tools(
         except PlanningError as exc:
             raise ToolError(str(exc)) from None
 
+    async def list_ecs_options(query: DiscoveryQuery) -> EcsOptionsPage:
+        """Discover one page of real ECS deployment choices with the signed-in user's cloud credentials. resource_type: enterprise_projects, vpcs, subnets, security_groups, images, flavors, availability_zones. Start with enterprise_projects/vpcs/zones; subnets require a discovered vpc_id, and flavors can be narrowed by availability_zone. Keep IDs internal: users choose meaningful names, not JSON. IAM may deny a catalog independently of ECS access; explain the gap, never broaden permissions or infer grants from roles/team attributes. Missing endpoint errors are for the MCP operator. Images default to public active VM images; private/shared are explicit. EPS uses offset; other paginated catalogs use marker; zones return their full bounded catalog. A returned option is neither create permission nor reserved capacity, compatible placement, quota, price or approval. Do not create or modify resources. Results are advisory facts for the current draft, not an execution binding."""
+        token = get_access_token()
+        if token is None or cloud is None:
+            raise ToolError("Cloud authentication context is unavailable")
+        try:
+            return await EcsDiscovery(cloud).list(token.token, query)
+        except CloudError as exc:
+            raise ToolError(str(exc)) from None
+
     async def get_deployment_options() -> PlanningOptions:
         """Get advisory CCI/ECS planning options for the signed-in user. These are configured suggestions, not live cloud grants, capacity or prices. Read the user's authorized source with your own file tools, then use prepare_deployment. Do not ask the user for JSON or cloud IDs."""
         return await planning_call("get_deployment_options")
@@ -114,6 +125,7 @@ def register_tools(
         (whoami, False, read_only),
         (list_projects, True, read_only),
         (list_ecs, True, read_only),
+        (list_ecs_options, True, read_only),
         (get_deployment_options, False, read_only),
         (prepare_deployment, False, stores_draft),
         (get_deployment_plan, False, read_only),

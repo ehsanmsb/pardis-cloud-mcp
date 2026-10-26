@@ -80,13 +80,13 @@ def test_whoami_organization_claims_over_authenticated_http(claims, expected):
 
 
 @pytest.mark.parametrize("enabled,disabled,with_cloud,expected", [
-    (("*",), (), True, {"whoami", "list_projects", "list_ecs"}),
+    (("*",), (), True, {"whoami", "list_projects", "list_ecs", "list_ecs_options"}),
     (("*",), (), False, {"whoami"}),
     (("whoami", "list_ecs"), ("list_ecs",), True, {"whoami"}),
     (("list_projects", "list_projects"), (), True, {"list_projects"}),
     (("list_ecs",), (), True, {"list_ecs"}),
     ((), (), True, set()),
-    (("*",), ("whoami", "list_projects", "list_ecs"), True, set()),
+    (("*",), ("whoami", "list_projects", "list_ecs", "list_ecs_options"), True, set()),
     (("*",), ("whoami",), False, set()),
     (("whoami", "list_ecs"), ("list_ecs",), False, {"whoami"}),
 ])
@@ -125,7 +125,7 @@ def test_selected_tools_are_the_only_discoverable_and_callable_tools(
                 tools = (await rpc("tools/list"))["tools"]
                 assert {t["name"] for t in tools} == expected
                 assert all("keycloak" not in t.get("description", "").lower() for t in tools)
-                for name in {"whoami", "list_projects", "list_ecs"} - expected:
+                for name in {"whoami", "list_projects", "list_ecs", "list_ecs_options"} - expected:
                     result = await rpc("tools/call", {"name": name, "arguments": {}})
                     assert result["isError"] is True
                     assert f"Unknown tool: {name}" in result["content"][0]["text"]

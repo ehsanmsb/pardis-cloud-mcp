@@ -79,7 +79,7 @@ does not itself authorize a release or cloud mutation.
 | Stage | Deliverable | Status | Acceptance evidence |
 | --- | --- | --- | --- |
 | D0 | Contracts and synthetic application fixtures | Released v3.1.0 | `tests/test_deployment.py`, JSON examples and [D0 test guide](DEVELOPMENT_D0.md) |
-| D1 | Cloud access scope and deployment options | Partial: authenticated advisory options for all users; live target bindings pending | `tests/test_planning.py` |
+| D1 | Cloud access scope and deployment options | Partial: advisory options and v3.3.0 read-only ECS catalogs implemented; live acceptance and target bindings pending | `tests/test_planning.py`, `tests/test_discovery.py`, [discovery guide](ECS_DISCOVERY.md) |
 | D2 | Source assessment intake | Advisory intake implemented in `prepare_deployment`; source registry/provenance verification pending | Valid/incomplete assessment HTTP tests; real-agent review pending |
 | D3 | Stored plan and Markdown deployment document | Owner-only preview implemented; execution-ready binding pending | Encrypted persistence, role/owner isolation, expiry, CCI/ECS documents; manual acceptance pending |
 | D4 | Approval, quota and idempotent operation state | Not started | — |
@@ -104,6 +104,7 @@ do not replace existing tools or introduce a general-purpose command-execution t
 | Tool | Input outline | Output and behavior |
 | --- | --- | --- |
 | `get_deployment_options` | None | Implemented: advisory CCI/ECS targets, review stacks and fixed suggestions for all authenticated users; live bindings pending |
+| `list_ecs_options` | Typed query selecting catalog, pagination and supported filters | Implemented in v3.3.0: real ECS/network/image/EPS catalog pages using the user's temporary credentials; no provisioning or execution binding |
 | `prepare_deployment` | Agent assessment, application name, candidate target | Implemented: owner-only draft, expiry and readable Markdown; fixed advisory sizing, no provisioning |
 | `get_deployment_plan` | Optional `plan_id`; omit for latest | Implemented: owner-authorized exact saved document with active-session check |
 | `deploy_app` | `plan_id`, `idempotency_key` | Existing or newly submitted `operation_id`; no replacement deployment parameters or caller-provided approval boolean |

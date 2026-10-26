@@ -166,6 +166,11 @@ receives only a page of instance summaries and the mapped cloud identity, never 
 See [the read-only integration runbook](docs/READ_ONLY_INTEGRATION.md) for prerequisites, expiry
 behavior, test prompts, limitations, and the live acceptance checklist.
 
+Version 3.3.0 adds `list_ecs_options` for real ECS catalogs: Enterprise Projects, VPCs,
+subnets, security groups, images, flavors and AZs. It reuses per-user credentials and adds optional
+VPC/IMS/EPS endpoint configuration. See [ECS discovery](docs/ECS_DISCOVERY.md) for setup and prompts.
+Discovery does not authorize provisioning or turn the current draft into an executable deployment.
+
 ## Select the toolset
 
 Tools are defined and registered centrally in `src/pardis_cloud_mcp/toolset.py`.
@@ -186,10 +191,10 @@ directory by default; set `MCP_CONFIG_FILE` to an absolute or relative path to u
 Remove the former `MCP_ENABLED_TOOLS` and `MCP_DISABLED_TOOLS` environment variables; tool selection
 now comes exclusively from YAML, and startup rejects those old variables to prevent conflicting settings.
 
-- Available names are `whoami`, `list_projects`, `list_ecs`, `get_deployment_options`,
+- Available names are `whoami`, `list_projects`, `list_ecs`, `list_ecs_options`, `get_deployment_options`,
   `prepare_deployment`, and `get_deployment_plan` (case-sensitive).
 - `tools.enabled` is required; `[]` enables no tools. `tools.disabled` defaults to `[]` and takes precedence.
-- The checked-in configuration enables all six current tools. Every signed-in user can prepare and
+- The checked-in configuration enables all seven current tools. Every signed-in user can prepare and
   read their own advisory documents. Readers and full users have the same planning tools; actual
   Pardis resource access follows their team/IAM grants. Planning grants no cloud write access.
   New tools stay disabled until added.
@@ -259,9 +264,12 @@ move those release tags. See [the release guide](docs/RELEASE.md) for setup, exa
 | `MCP_CONFIG_FILE` | no | YAML configuration path; defaults to `config.yaml` relative to the working directory |
 | `PARDIS_IAM_ENDPOINT` | for cloud tools | Verified HTTPS IAM API origin |
 | `PARDIS_ECS_ENDPOINT` | for cloud tools | Verified HTTPS ECS API origin |
+| `PARDIS_VPC_ENDPOINT` | for network discovery | Verified HTTPS VPC API origin |
+| `PARDIS_IMS_ENDPOINT` | for image discovery | Verified HTTPS IMS API origin |
+| `PARDIS_EPS_ENDPOINT` | for Enterprise Project discovery | Verified HTTPS EPS API origin |
 | `PARDIS_PROJECT_ID` | for enterprise-only access | Regional IAM project ID (32 hex characters); operator-approved route even if discovery is empty, never an Enterprise Project ID |
 | `PARDIS_IDP_ID` | for cloud tools | Programmatic OIDC identity provider trusting the MCP client |
-| `PARDIS_CA_BUNDLE` | no | Optional PEM CA bundle used for both cloud services |
+| `PARDIS_CA_BUNDLE` | no | Optional PEM CA bundle used for all configured cloud services |
 
 ## Security boundaries
 

@@ -39,9 +39,14 @@ class CloudSettings:
     project_id: str | None
     idp_id: str
     ca_bundle: str | None = None
+    vpc_endpoint: str | None = None
+    ims_endpoint: str | None = None
+    eps_endpoint: str | None = None
 
     def __post_init__(self) -> None:
-        for endpoint in (self.iam_endpoint, self.ecs_endpoint):
+        for endpoint in (self.iam_endpoint, self.ecs_endpoint, self.vpc_endpoint, self.ims_endpoint, self.eps_endpoint):
+            if endpoint is None:
+                continue
             url = urlsplit(endpoint)
             if (
                 url.scheme != "https" or not url.hostname or url.username or url.password
@@ -58,11 +63,16 @@ class CloudSettings:
         names = ("PARDIS_IAM_ENDPOINT", "PARDIS_ECS_ENDPOINT", "PARDIS_IDP_ID")
         values = [os.getenv(name, "").strip() for name in names]
         if not any(values):
+            if any(os.getenv(name) for name in ("PARDIS_VPC_ENDPOINT", "PARDIS_IMS_ENDPOINT", "PARDIS_EPS_ENDPOINT")):
+                raise ValueError("Discovery endpoints require the IAM, ECS and IdP cloud configuration")
             return None
         if not all(values):
             raise ValueError("Set all three PARDIS_IAM_ENDPOINT, PARDIS_ECS_ENDPOINT, PARDIS_IDP_ID values")
         return cls(values[0], values[1], os.getenv("PARDIS_PROJECT_ID") or None, values[2],
-                   ca_bundle=os.getenv("PARDIS_CA_BUNDLE") or None)
+                   ca_bundle=os.getenv("PARDIS_CA_BUNDLE") or None,
+                   vpc_endpoint=os.getenv("PARDIS_VPC_ENDPOINT") or None,
+                   ims_endpoint=os.getenv("PARDIS_IMS_ENDPOINT") or None,
+                   eps_endpoint=os.getenv("PARDIS_EPS_ENDPOINT") or None)
 
 
 class CloudProject(BaseModel):
@@ -119,6 +129,7 @@ class PardisCloud:
             session.session_id, session.subject, self.provider.settings.keycloak_issuer_url,
             self.provider.settings.keycloak_client_id, self.settings.iam_endpoint,
             self.settings.ecs_endpoint, self.settings.project_id, self.settings.idp_id,
+            self.settings.vpc_endpoint, self.settings.ims_endpoint, self.settings.eps_endpoint,
         ])
         return self.provider._key("cloud", hashlib.sha256(identity.encode()).hexdigest())
 
@@ -242,6 +253,19 @@ class PardisCloud:
         except (ValueError, TypeError, KeyError):
             raise CloudError("IAM returned an invalid response.") from None
 
+    def resolve_project(self, credentials: CloudCredentials, project_id: str | None) -> str:
+        project_id = project_id or self.settings.project_id
+        if project_id is None:
+            if not credentials.projects:
+                raise CloudError("IAM project discovery is empty; enterprise-project-only users may still have ECS access. Ask the operator to configure PARDIS_PROJECT_ID with the regional IAM project ID, then retry. Do not grant broader IAM permissions.")
+            if len(credentials.projects) != 1:
+                raise CloudError("Call list_projects and select a project_id explicitly; there is not exactly one accessible project.")
+            project_id = credentials.projects[0].id
+        # The operator's regional route bypasses discovery only; IAM still authorizes every API call.
+        if project_id != self.settings.project_id and project_id not in {p.id for p in credentials.projects}:
+            raise CloudError("The selected project is not in this user's accessible project list.")
+        return project_id
+
     async def list_ecs(self, access_token: str, limit: int = 25, marker: str | None = None,
                        project_id: str | None = None,
                        enterprise_project_id: str = "all_granted_eps") -> EcsPage:
@@ -258,18 +282,7 @@ class PardisCloud:
         outcome = "failed"
         try:
             credentials = await self._credentials(session)
-            project_id = project_id or self.settings.project_id
-            if project_id is None:
-                if not credentials.projects:
-                    raise CloudError("IAM project discovery is empty; enterprise-project-only users may still have ECS access. Ask the operator to configure PARDIS_PROJECT_ID with the regional IAM project ID, then retry list_ecs. Do not grant broader IAM permissions.")
-                if len(credentials.projects) != 1:
-                    raise CloudError("Call list_projects and select a project_id explicitly; there is not exactly one accessible project.")
-                project_id = credentials.projects[0].id
-            # Discovery does not necessarily include enterprise-project-only grants.
-            # Only the operator-configured regional route may bypass discovery;
-            # ECS still authorizes every call with this user's own credentials.
-            if project_id != self.settings.project_id and project_id not in {p.id for p in credentials.projects}:
-                raise CloudError("The selected project is not in this user's accessible project list.")
+            project_id = self.resolve_project(credentials, project_id)
             if await self.provider.session_for_access_token(access_token) is None:
                 raise CloudError("MCP session was revoked or expired. Sign in again.")
             servers = await asyncio.to_thread(

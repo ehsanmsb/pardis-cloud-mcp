@@ -143,7 +143,10 @@ def build_server(
             "choices. Present the returned deployment document and explain unresolved items. "
             "Keep plan IDs internal and use get_deployment_plan without an ID for the latest plan. "
             "Plans are advisory drafts, not live cloud-access checks or approvals. Deployment is "
-            "not implemented: never claim resources were created or that the app is running."
+            "not implemented: never claim resources were created or that the app is running. "
+            "When proposing ECS and list_ecs_options is enabled, discover real catalogs before recommending "
+            "specific IDs. Use evidence from discovery in the document, label unavailable catalogs and "
+            "unchecked compatibility clearly, and never imply catalog visibility grants write permission."
         ),
         auth_server_provider=oauth_provider,
         auth=AuthSettings(

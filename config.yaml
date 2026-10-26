@@ -4,6 +4,7 @@ tools:
     - whoami
     - list_projects
     - list_ecs
+    - list_ecs_options
     - get_deployment_options
     - prepare_deployment
     - get_deployment_plan
