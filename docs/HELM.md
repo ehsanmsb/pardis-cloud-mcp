@@ -18,9 +18,13 @@ The existing ConfigMap template supports these settings; no extra Secret or temp
 ## 1. Prepare the image and cluster
 
 The [release workflow](RELEASE.md) publishes images to `ghcr.io/ehsanmsb/pardis-cloud-mcp`.
-The chart pins `appVersion` and `image.tag` to `3.2.1`. Confirm its release workflow has succeeded
+The chart pins `appVersion` and `image.tag` to `3.3.0`. Confirm its release workflow has succeeded
 before deploying; changing chart metadata alone does not publish an image. CI builds for `linux/amd64`.
 For private GHCR packages, configure `imagePullSecrets` with credentials authorized to pull the package.
+
+For read-only ECS catalog discovery, enable `list_ecs_options` under `config.tools.enabled`.
+Set verified `env.PARDIS_VPC_ENDPOINT`, `env.PARDIS_IMS_ENDPOINT` and `env.PARDIS_EPS_ENDPOINT` for
+their respective catalogs; flavors and AZs use the existing ECS endpoint. See [ECS discovery](ECS_DISCOVERY.md).
 
 To build manually or for another registry/CPU architecture, build the repository's Dockerfile and push
 an image your cluster can pull:
