@@ -75,7 +75,8 @@ class EcsDiscovery:
                 params["vpc_id"] = query.vpc_id
         elif kind == "images":
             endpoint, path, key = settings.ims_endpoint, "/v2/cloudimages", "images"
-            params = {"limit": query.limit, "__imagetype": query.image_type, "status": "active", "virtual_env_type": "FusionCompute"}
+            params = {"limit": query.limit, "__imagetype": query.image_type, "status": "active", "virtual_env_type": "FusionCompute",
+                      "enterprise_project_id": query.enterprise_project_id}
             if query.image_type == "gold":
                 params["visibility"] = "public"
             elif query.image_type == "private":
@@ -137,8 +138,8 @@ class EcsDiscovery:
             "vpcs": ("cidr", "status", "enterprise_project_id"),
             "subnets": ("cidr", "gateway_ip", "vpc_id", "status", "availability_zone", "neutron_network_id", "dhcp_enable"),
             "security_groups": ("vpc_id", "enterprise_project_id"),
-            "images": ("status", "__os_type", "__os_version", "__architecture", "__imagetype", "min_disk", "min_ram"),
-            "flavors": ("vcpus", "ram", "disk"),
+            "images": ("status", "__os_type", "__os_version", "__architecture", "__imagetype", "min_disk", "min_ram", "enterprise_project_id"),
+            "flavors": ("vcpus", "ram", "disk", "OS-FLV-DISABLED:disabled"),
             "availability_zones": ("type", "mode"),
         }[kind]
         details = {}
@@ -157,7 +158,7 @@ class EcsDiscovery:
                 or query.vpc_id and kind not in ("subnets", "security_groups")
                 or query.availability_zone and kind != "flavors"
                 or query.image_type != "gold" and kind != "images"
-                or query.enterprise_project_id != "all_granted_eps" and kind not in ("vpcs", "security_groups")):
+                or query.enterprise_project_id != "all_granted_eps" and kind not in ("vpcs", "security_groups", "images")):
             raise CloudError("A filter or pagination parameter is not supported for this resource type.")
         if kind == "subnets" and not query.vpc_id:
             raise CloudError("Select an accessible VPC using list_ecs_options(resource_type=vpcs), then list its subnets.")

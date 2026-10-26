@@ -3,6 +3,7 @@ import html
 import re
 
 from pardis_cloud_mcp.deployment import ResourcePreset, SourceAssessment, Target
+from pardis_cloud_mcp.ecs_plan import EcsPlanSelection
 
 
 def text(value: str) -> str:
@@ -10,7 +11,8 @@ def text(value: str) -> str:
     return re.sub(r"([\\`*_{}\[\]()#+.!|~-])", r"\\\1", html.escape(value))
 
 
-def render_document(name: str, assessment: SourceAssessment, target: Target, preset: ResourcePreset) -> str:
+def render_document(name: str, assessment: SourceAssessment, target: Target, preset: ResourcePreset,
+                    ecs: EcsPlanSelection | None = None) -> str:
     resources = preset.resources
     review = "Ready for planning" if assessment.readiness == "ready_for_planning" else "More information is needed"
     lines = [f"# Deployment plan: {text(name)}", "",
@@ -25,14 +27,29 @@ def render_document(name: str, assessment: SourceAssessment, target: Target, pre
              "## Proposed hosting", "", f"Candidate: **{target.upper()}**."]
     lines += (["Use a container-based application deployment as the starting proposal. Container readiness and available CCI features still need verification."]
               if target == "cci" else
+              ["Use the ECS choices recorded below. The application installation method is still unresolved; a running VM alone is not a working application."] if ecs else
               ["Use a virtual machine as the starting proposal. An approved machine image, network and application installation method still need selection; a running VM alone is not a working application."])
-    lines += ["", "### Initial sizing proposal", "",
+    lines += ["", "### Selected sizing" if ecs else "### Initial sizing proposal", "",
               f"- CPU: {resources.cpu_millicores / 1000:g} vCPU per instance.",
               f"- Memory: {resources.memory_mib} MiB per instance.",
               f"- Instances: {resources.replicas}.",
               f"- Disk: {resources.disk_gib} GiB requested per instance.",
-              "These are starting estimates, not verified capacity, available flavors or a performance guarantee.", "",
-              "## Other services", ""]
+              ("CPU and RAM come from the selected cloud flavor. Disk is the requested root volume, not reserved storage. Capacity and application performance are not guaranteed."
+               if ecs else "These are starting estimates, not verified capacity, available flavors or a performance guarantee.")]
+    if ecs:
+        lines += ["", "## Recorded ECS choices", "",
+                  f"Catalog verification completed: {text(ecs.observed_at)}. This is a point-in-time snapshot, not a live grant.", ""]
+        for label, option in (("Enterprise Project", ecs.enterprise_project), ("VPC", ecs.vpc),
+                              ("Subnet", ecs.subnet), ("Security group", ecs.security_group),
+                              ("VM image", ecs.image), ("Flavor", ecs.flavor), ("Availability zone", ecs.availability_zone)):
+            lines.append(f"- {label}: {text(option.name)}.")
+        lines += ["- Exact identifiers and regional project routing are stored with this plan; users do not need to copy them.",
+                  "- Shared networks may belong to a different Enterprise Project; visibility does not grant write access.",
+                  "", "### Backend checks", ""]
+        lines.extend(f"- {text(check)}" for check in ecs.checks)
+        lines += ["", "### Still unverified", ""]
+        lines.extend(f"- {text(unknown)}" for unknown in ecs.unknowns)
+    lines += ["", "## Other services", ""]
     for dependency in assessment.dependencies:
         lines.append(f"- {text(dependency.name)} ({text(dependency.kind)}): {text(dependency.purpose)}. Select a compatible service and verify access before execution.")
     if not assessment.dependencies:
@@ -41,7 +58,8 @@ def render_document(name: str, assessment: SourceAssessment, target: Target, pre
               "- Start with private access. Public exposure requires a separate reviewed plan and approval.",
               f"- Application port: {assessment.port if assessment.port is not None else 'not identified'}.",
               f"- Health endpoint: {text(assessment.health_path) if assessment.health_path else 'not identified'}.",
-              "- Network, project placement, security rules and service compatibility are not verified yet."]
+              ("- Selected placement is recorded above. Security rules, deployment grants and full service compatibility still require verification."
+               if ecs else "- Network, project placement, security rules and service compatibility are not verified yet.")]
     for env in assessment.environment:
         lines.append(f"- {text(env.name)}: {env.kind}; {'required' if env.required else 'optional'}"
                      + (f"; reference {text(env.secret_ref)}" if env.secret_ref else "") + ". Never put secret values in this document.")

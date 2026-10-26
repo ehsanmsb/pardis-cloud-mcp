@@ -59,7 +59,7 @@ def test_prompt_planning_flow_saves_and_retrieves_document_without_cloud_calls(m
             assert {tool["name"] for tool in tools} == set(TOOLS)
             prepare = next(tool for tool in tools if tool["name"] == "prepare_deployment")
             assert prepare["annotations"]["readOnlyHint"] is False
-            assert set(prepare["inputSchema"]["properties"]) == {"assessment", "application_name", "target"}
+            assert set(prepare["inputSchema"]["properties"]) == {"assessment", "application_name", "target", "ecs_selection"}
             options = (await rpc(tokens.access_token, "get_deployment_options"))["structuredContent"]
             assert options["targets"] == ["cci", "ecs"]
             assert options["deployment_available"] is options["cloud_access_verified"] is False

@@ -72,7 +72,7 @@ Input is one typed `query`; the agent supplies it. `resource_type` selects the f
 - Regional routing uses the existing configured `PARDIS_PROJECT_ID`, otherwise a sole discovered
   IAM project. Other caller-selected routes must be discovered; EPS is global and takes no project ID.
   The configured route bypasses discovery membership only, never service authorization.
-- VPC and security-group lists default to `enterprise_project_id=all_granted_eps`. An explicit
+- VPC, security-group and image lists default to `enterprise_project_id=all_granted_eps`. An explicit
   Enterprise Project ID narrows these calls. Unsupported Enterprise Project filters on other catalogs
   are rejected rather than silently ignored. Subnets are filtered by their selected VPC; this alone
   does not prove team ownership, permission to attach a NIC, or isolation between subnets.
@@ -101,11 +101,10 @@ subnet/zone combination, a quota check, pricing or approval. Availability-zone e
 facts, not a guarantee that a particular flavor is in stock. Existing ID-token freshness and cloud
 credential caching behavior still applies; see [the integration runbook](READ_ONLY_INTEGRATION.md).
 
-The existing saved `prepare_deployment` record is still an advisory source-review document with fixed
-initial sizing. Agent explanations can cite discovery separately, but this increment does not bind or
-persist selected live IDs into an execution-ready plan. Next, validate the chosen combination through
-the user's credentials and store a normalized selection and its provenance with the plan, then add
-approval/idempotent execution. No cloud creation is available yet.
+The v3.4.0 [ECS selection increment](ECS_PLAN_SELECTION.md) extends `prepare_deployment` with optional
+`ecs_selection`: backend revalidation, persisted normalized choices, actual flavor sizing, provenance
+and unresolved checks. Generic drafts retain fixed initial suggestions. Neither form is execution-ready;
+approval, idempotent operations, build/delivery and cloud creation are not available yet.
 
 ## Verification
 
@@ -130,6 +129,6 @@ live confirmation:
 - [VPC list](https://support.huaweicloud.com/intl/en-us/api-vpc/vpc_api01_0003.html)
 - [Subnet list](https://support.huaweicloud.com/intl/en-us/api-vpc/vpc_subnet01_0003.html)
 - [Security group list](https://support.huaweicloud.com/intl/en-us/api-vpc/vpc_sg01_0003.html)
-- [Image list](https://www.huaweicloud.com/zhishi/apiedoc-listimages.html)
+- [Image list and Enterprise Project filtering](https://support.huaweicloud.com/intl/en-us/api-ims/ims_03_0602.html)
 - [Flavor discovery in the ECS example](https://support.huaweicloud.com/intl/en-us/api-ecs/ecs_04_0001.html)
 - [Current AZ list](https://support.huaweicloud.com/intl/en-us/api-ecs/ecs_02_1501.html)

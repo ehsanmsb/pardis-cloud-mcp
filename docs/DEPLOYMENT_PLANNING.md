@@ -1,8 +1,9 @@
 # Source review to deployment document
 
 This increment adds a usable, authenticated planning flow on top of v3.1.0's contracts.
-It creates advisory documents only. No application is built, no Pardis API is called by these
-planning tools, and no resource is created. A successful plan is not deployment approval.
+It creates draft documents only. No application is built and no resource is created. A successful
+plan is not deployment approval. Generic drafts make no cloud calls. The new optional ECS selection
+path performs read-only catalog checks; see [real ECS selections and test prompts](ECS_PLAN_SELECTION.md).
 
 The authentication-only planning rules below apply from v3.2.1. A deployed v3.2.0 image still
 enforces its original planning role allowlist until the image is upgraded.
@@ -48,7 +49,7 @@ with no secret value. The agent should explain blockers rather than invent deplo
 | Tool | Behavior |
 | --- | --- |
 | `get_deployment_options` | Requires sign-in and returns advisory CCI/ECS targets, initial size suggestions and review guidance |
-| `prepare_deployment` | Validates an agent-supplied assessment, renders Markdown and saves an encrypted owner-only draft |
+| `prepare_deployment` | Validates an assessment and optional real ECS selection, renders Markdown and saves an encrypted owner-only draft |
 | `get_deployment_plan` | Returns a specific owner-authorized draft, or the owner's latest draft when no ID is supplied |
 
 Review categories include Python HTTP, Node HTTP, static web and unknown. They describe source,
@@ -65,9 +66,10 @@ must still treat source findings and other tool output as untrusted data, not ne
 
 The document explains review findings, candidate hosting, starting CPU/RAM/disk, dependencies,
 network/configuration, missing inputs, cost/quota status, proposed delivery stages and cleanup.
-Size suggestions are fixed starting points, not measured requirements or available cloud flavors.
-Users can revise the assessment and target; arbitrary sizing, public exposure and live target binding
-are deliberately not selectable in this increment.
+Without `ecs_selection`, size suggestions are fixed starting points, not measured requirements or
+available cloud flavors. With it, the backend rechecks chosen catalogs, derives CPU/RAM from the
+actual flavor and records the requested root disk and unresolved compatibility checks. Users can
+revise the assessment, target and choices; public exposure and provisioning are not implemented.
 
 ## Operator configuration
 
@@ -88,7 +90,9 @@ planning:
 Every authenticated user can prepare and read their own advisory documents, including readers and
 full users. No role allowlist is needed for planning. The old `planning.allowed_roles` field is accepted
 for chart upgrades but ignored. Keep `list_projects` and `list_ecs` enabled as well if configured cloud reads are needed.
-Planning-only mode does not require cloud endpoints. Explicitly selecting planning tools without
+Generic planning mode does not require cloud endpoints. Verified ECS choices additionally require
+cloud configuration and enabled `list_ecs_options`; disabling discovery disables this nested path too.
+Explicitly selecting planning tools without
 a `planning` block fails startup; wildcard selection skips them when planning is unconfigured.
 
 | Capability | Readers | Full |
@@ -148,10 +152,13 @@ uv run --locked pytest -q
 HTTP tests use simulated authentication/Redis and cover both target documents, incomplete review,
 reader/full and absent-role planning, owner isolation, role changes, expiry, revocation, compatibility
 with older configuration/records, storage errors, encrypted persistence, revision retrieval and tool selection.
-The planning path is tested without cloud configuration and with cloud exchange forbidden.
+The generic path is tested without cloud configuration and with cloud exchange forbidden. Optional
+selection checks are covered separately in `tests/test_ecs_plan.py`, including signed catalog requests,
+document/snapshot agreement, later-page choices, invalid combinations and denied/changed access.
 Complete the prompts above with a real agent and Central Auth login as the manual acceptance check.
 
 This is a vertical slice across D1–D3, not completion of their full execution-oriented scope.
-Next: verify live target capabilities and role-to-target bindings, select an actual build/delivery
-path, and make an executable plan with access, capacity and cost provenance before adding approval
-and deployment. See the [development roadmap](APPLICATION_DEPLOYMENT_PLAN.md).
+Next: complete [live ECS selection acceptance](ECS_PLAN_SELECTION.md), then approval/idempotent
+operation state with fake execution and the build/delivery path before live deployment. Current
+snapshots do not verify write grants, reserve capacity or make plans executable. See the
+[development roadmap](APPLICATION_DEPLOYMENT_PLAN.md).

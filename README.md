@@ -13,6 +13,8 @@ D0 development contracts and synthetic CCI/ECS plans are available for offline t
 [D0 development guide](docs/DEVELOPMENT_D0.md). To test the actual agent-to-document experience,
 follow the [prompt-based planning guide](docs/DEPLOYMENT_PLANNING.md). The agent reviews source
 using its own authorized file access; MCP saves a readable advisory document in encrypted Redis.
+The v3.4.0 [ECS selection flow](docs/ECS_PLAN_SELECTION.md) records real cloud choices and actual
+flavor sizing after backend catalog checks. It remains a draft; no resource creation is available.
 
 Example prompt, after connecting the updated local MCP server:
 

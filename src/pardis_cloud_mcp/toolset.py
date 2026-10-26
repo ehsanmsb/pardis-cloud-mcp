@@ -14,6 +14,7 @@ from pardis_cloud_mcp.cloud import ENTERPRISE_PROJECT_PATTERN, CloudError, Cloud
 from pardis_cloud_mcp.config import PlanningConfig
 from pardis_cloud_mcp.deployment import Name, SourceAssessment, Target
 from pardis_cloud_mcp.discovery import DiscoveryQuery, EcsDiscovery, EcsOptionsPage
+from pardis_cloud_mcp.ecs_plan import EcsPlanVerifier, EcsSelection
 from pardis_cloud_mcp.planning import PlanDocument, PlanningError, PlanningOptions, PlanningService
 
 
@@ -93,7 +94,7 @@ def register_tools(
             raise ToolError(str(exc)) from None
 
     async def list_ecs_options(query: DiscoveryQuery) -> EcsOptionsPage:
-        """Discover one page of real ECS deployment choices with the signed-in user's cloud credentials. resource_type: enterprise_projects, vpcs, subnets, security_groups, images, flavors, availability_zones. Start with enterprise_projects/vpcs/zones; subnets require a discovered vpc_id, and flavors can be narrowed by availability_zone. Keep IDs internal: users choose meaningful names, not JSON. IAM may deny a catalog independently of ECS access; explain the gap, never broaden permissions or infer grants from roles/team attributes. Missing endpoint errors are for the MCP operator. Images default to public active VM images; private/shared are explicit. EPS uses offset; other paginated catalogs use marker; zones return their full bounded catalog. A returned option is neither create permission nor reserved capacity, compatible placement, quota, price or approval. Do not create or modify resources. Results are advisory facts for the current draft, not an execution binding."""
+        """Discover one page of real ECS deployment choices with the signed-in user's cloud credentials. resource_type: enterprise_projects, vpcs, subnets, security_groups, images, flavors, availability_zones. Start with enterprise_projects/vpcs/zones; subnets require a discovered vpc_id, and flavors can be narrowed by availability_zone. Keep IDs internal: users choose meaningful names, not JSON. IAM may deny a catalog independently of ECS access; explain the gap, never broaden permissions or infer grants from roles/team attributes. Missing endpoint errors are for the MCP operator. Images default to public active VM images; private/shared are explicit. Images, VPCs and security groups support enterprise_project_id. EPS uses offset; other paginated catalogs use marker; zones return their full bounded catalog. A returned option is neither create permission nor reserved capacity, compatible placement, quota, price or approval. Do not create or modify resources. Pass chosen IDs through prepare_deployment.ecs_selection for backend revalidation and storage; catalog output alone is not an execution binding."""
         token = get_access_token()
         if token is None or cloud is None:
             raise ToolError("Cloud authentication context is unavailable")
@@ -107,10 +108,10 @@ def register_tools(
         return await planning_call("get_deployment_options")
 
     async def prepare_deployment(assessment: SourceAssessment, application_name: Name,
-                                 target: Target = "cci") -> PlanDocument:
-        """Create and save a readable advisory deployment document from your code review. Inspect the user's authorized source first; never run its scripts, send raw source/secrets, or invent missing facts. Fill the assessment yourself, use a short source label and omit unknown revision. Mark blockers or missing runtime information as needs_input. The user should not fill technical fields. Present document_markdown to the user; retain plan_id internally. Saves an encrypted draft only: no build, cloud writes, approval, pricing or quota verification. To revise, call again with the updated assessment/target."""
+                                 target: Target = "cci", ecs_selection: EcsSelection | None = None) -> PlanDocument:
+        """Create and save a readable deployment draft from your code review. Inspect authorized source first; never run its scripts, send raw source/secrets or invent facts. Fill the assessment yourself, use a short source label and omit unknown revision. Mark missing runtime information as needs_input. For ECS, discover catalogs, explain options and let users choose by name; pass the IDs in ecs_selection yourself. Backend rechecks all choices and records actual flavor CPU/RAM and requested root disk; do not supply trusted snapshots or permission claims. Omit ecs_selection for a generic advisory draft or unavailable catalogs. Failed checks save no new draft: explain the gap, do not silently remove chosen options. Present document_markdown; keep plan_id internal. No build, cloud writes, approval, pricing or quota verification. To revise, call again with the updated assessment and choices."""
         return await planning_call("prepare_deployment", assessment=assessment,
-                                   application_name=application_name, target=target)
+                                   application_name=application_name, target=target, ecs_selection=ecs_selection)
 
     async def get_deployment_plan(
         plan_id: Annotated[str | None, Field(pattern=r"^plan-[a-f0-9]{32}$")] = None,
@@ -151,6 +152,8 @@ def register_tools(
         selected -= cloud_names
     elif selected & cloud_names:
         cloud = PardisCloud(cloud_settings, provider)
+    if planning is not None and cloud is not None and "list_ecs_options" in selected:
+        planning.ecs_verifier = EcsPlanVerifier(EcsDiscovery(cloud))
 
     for handler, _, annotations in catalog:
         if handler.__name__ in selected:

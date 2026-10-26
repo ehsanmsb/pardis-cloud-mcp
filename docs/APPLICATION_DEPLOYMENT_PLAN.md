@@ -1,8 +1,10 @@
 # Application Deployment Development Plan
 
 Date: 2026-10-25. Baseline: application release `v3.0.0`, commit `2f136d2`.
-Status: D0 released in v3.1.0. A local advisory planning slice across D1–D3 is implemented;
-real-agent acceptance is pending. See [the planning guide](DEPLOYMENT_PLANNING.md) for prompts
+Status updated 2026-10-26: D0 released in v3.1.0; advisory planning and read-only ECS catalogs are released.
+An optional real ECS selection/check/storage slice is implemented in v3.4.0; live selection acceptance
+is pending. See [ECS selection tests and limits](ECS_PLAN_SELECTION.md),
+[the planning guide](DEPLOYMENT_PLANNING.md) for prompts
 and [the D0 test guide](DEVELOPMENT_D0.md) for offline contract checks.
 
 This is the active development roadmap. It supersedes the ECS-only scope and sequencing in
@@ -31,6 +33,8 @@ deployment, and exposes its endpoint and bounded application logs.
   `whoami` hides technical details by default. Never accept actor identity or roles from tool arguments.
 - Support both CCI and ECS as deployment targets. The first release need not implement every API:
   distinguish services that can be recommended from services that can actually be provisioned.
+- Prioritize ECS for the first live deployment. CCI remains an advisory target; CCE and team quota
+  design are deferred. Quota status must remain unknown until the relevant execution check exists.
 - Keep resource selection flexible within supported, tested capabilities and the user's permissions.
   Initial small/private test presets are rollout controls, not a permanent product restriction.
 - The agent performs semantic code review and explains recommendations. MCP supplies facts, validates
@@ -59,9 +63,9 @@ flowchart LR
 | --- | --- | --- |
 | Authentication and federation | Implemented; user-confirmed real login and ECS listing | Accepted foundation for this roadmap, not a claim of production certification |
 | Role-based cloud isolation | HR role saw the test ECS; replacing it with Marketing denied explicit HR access and returned an empty permitted list | Positive Marketing access to an existing Marketing resource was not tested |
-| Identity tool and session freshness | Current verified claims and per-request upstream refresh implemented in v3.3.1 | Signed-JWT and concurrency tests pass; live Central Auth/Pardis acceptance pending; no push-event cancellation of in-flight cloud requests |
-| Existing toolset | `whoami`, `list_projects`, `list_ecs`; YAML selection | No source review, deployment, approval, application catalog or CCI adapter |
-| Tests and release | 83 local tests passed; v3.0.0 CI and image publication succeeded | Cloud writes and new workflows remain untested |
+| Identity tool and session freshness | Per-request upstream refresh released in v3.3.1; user reported staging tests successful | No push-event cancellation of in-flight cloud requests |
+| Existing toolset | Identity/project/ECS reads, ECS discovery and three planning tools; YAML selection | Source review remains agent-supplied; no deployment, approval, application catalog or CCI adapter |
+| Tests and release | v3.4.0 selection increment passes 244 automated tests locally | Authenticated live selection acceptance, cloud writes and build workflows remain untested |
 | Storage and operations | Encrypted Redis sessions, basic health, ECS audit events | No durable deployment ledger, comprehensive audit or alerting yet |
 
 Do not reopen authentication design as a prerequisite to planning work. Preserve its behavior with
@@ -79,19 +83,21 @@ does not itself authorize a release or cloud mutation.
 | Stage | Deliverable | Status | Acceptance evidence |
 | --- | --- | --- | --- |
 | D0 | Contracts and synthetic application fixtures | Released v3.1.0 | `tests/test_deployment.py`, JSON examples and [D0 test guide](DEVELOPMENT_D0.md) |
-| D1 | Cloud access scope and deployment options | Partial: advisory options and v3.3.0 read-only ECS catalogs implemented; live acceptance and target bindings pending | `tests/test_planning.py`, `tests/test_discovery.py`, [discovery guide](ECS_DISCOVERY.md) |
+| D1 | Cloud access scope and deployment options | Partial: catalogs and v3.4.0 user-scoped selection rechecks implemented; live catalog acceptance and write grants pending | `tests/test_planning.py`, `tests/test_discovery.py`, `tests/test_ecs_plan.py`, [discovery guide](ECS_DISCOVERY.md) |
 | D2 | Source assessment intake | Advisory intake implemented in `prepare_deployment`; source registry/provenance verification pending | Valid/incomplete assessment HTTP tests; real-agent review pending |
-| D3 | Stored plan and Markdown deployment document | Owner-only preview implemented; execution-ready binding pending | Encrypted persistence, role/owner isolation, expiry, CCI/ECS documents; manual acceptance pending |
+| D3 | Stored plan and Markdown deployment document | Owner-only preview implemented; v3.4.0 adds optional real ECS snapshot/sizing/hash/document agreement; execution-ready binding pending | Encrypted persistence, owner isolation, expiry, selected-network/sizing checks; [manual selection acceptance](ECS_PLAN_SELECTION.md) pending |
 | D4 | Approval, quota and idempotent operation state | Not started | — |
 | D5 | Build/delivery adapter and verified artifact | Not started | — |
-| D6 | First live CCI or ECS deployment path | Not started | — |
+| D6 | First live ECS deployment path | Not started | — |
 | D7 | Second deployment target | Not started | — |
 | D8 | Access-controlled application logs | Not started | — |
 | D9 | End-to-end acceptance and operational handoff | Not started | — |
 
 Milestone A: D0–D3, source to reviewed document, zero cloud mutations.
-The current preview demonstrates this user flow, but does not yet verify authorized cloud target
-bindings or source provenance. Do not treat it as a deployable plan or full D1–D3 completion.
+The current preview demonstrates this user flow and rechecks optional ECS choices against
+catalogs. It does not verify write grants, complete compatibility or source provenance. Do not treat
+it as a deployable plan or full D1–D3 completion. Next: live selection acceptance, then D4 approval
+and idempotent operation state with fake execution, followed by D5 build/delivery and D6 live ECS.
 Milestone B: D4–D6, approved plan to one healthy real application.
 Milestone C: D7–D9, both targets, logs, isolation and recovery acceptance.
 Do not promise delivery dates until build integration and target API access are verified.
@@ -105,7 +111,7 @@ do not replace existing tools or introduce a general-purpose command-execution t
 | --- | --- | --- |
 | `get_deployment_options` | None | Implemented: advisory CCI/ECS targets, review stacks and fixed suggestions for all authenticated users; live bindings pending |
 | `list_ecs_options` | Typed query selecting catalog, pagination and supported filters | Implemented in v3.3.0: real ECS/network/image/EPS catalog pages using the user's temporary credentials; no provisioning or execution binding |
-| `prepare_deployment` | Agent assessment, application name, candidate target | Implemented: owner-only draft, expiry and readable Markdown; fixed advisory sizing, no provisioning |
+| `prepare_deployment` | Agent assessment, application name, candidate target, optional `ecs_selection` | Implemented: owner-only draft, expiry and Markdown; optional fresh ECS catalog checks/normalized snapshot/actual flavor sizing; no provisioning |
 | `get_deployment_plan` | Optional `plan_id`; omit for latest | Implemented: owner-authorized exact saved document with active-session check |
 | `deploy_app` | `plan_id`, `idempotency_key` | Existing or newly submitted `operation_id`; no replacement deployment parameters or caller-provided approval boolean |
 | `get_deployment_status` | `operation_id` | Actual stages, resource identifiers and endpoint when verified |

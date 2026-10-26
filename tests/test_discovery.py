@@ -86,6 +86,7 @@ def test_catalog_paths_signing_pagination_and_response_allowlists(monkeypatch, k
         if kind == "images":
             assert calls[0].url.params["status"] == "active"
             assert calls[0].url.params["visibility"] == "public"
+            assert calls[0].url.params["enterprise_project_id"] == "all_granted_eps"
         assert page.query == query
         await provider.redis.aclose()
     with caplog.at_level(logging.INFO, logger="pardis_cloud_mcp.discovery"):
@@ -161,7 +162,7 @@ def test_scope_revocation_user_isolation_and_bounded_responses(monkeypatch):
 @pytest.mark.parametrize("kwargs", [
     {"resource_type": "subnets"}, {"resource_type": "flavors", "offset": 1},
     {"resource_type": "enterprise_projects", "marker": "id"},
-    {"resource_type": "images", "enterprise_project_id": EP},
+    {"resource_type": "availability_zones", "enterprise_project_id": EP},
     {"resource_type": "vpcs", "availability_zone": "zone-a"},
 ])
 def test_unsupported_filter_combinations_do_not_contact_cloud(monkeypatch, kwargs):
@@ -207,6 +208,7 @@ def test_endpoint_configuration_and_input_validation(monkeypatch):
      {"owner": PROJECT, "__imagetype": "private", "marker": "image-previous"}),
     ({"resource_type": "images", "image_type": "shared"},
      {"member_status": "accepted", "visibility": "shared", "__imagetype": "shared"}),
+    ({"resource_type": "images", "enterprise_project_id": EP}, {"enterprise_project_id": EP}),
     ({"resource_type": "security_groups", "vpc_id": VPC, "enterprise_project_id": EP, "marker": "sg-previous"},
      {"vpc_id": VPC, "enterprise_project_id": EP, "marker": "sg-previous"}),
 ])

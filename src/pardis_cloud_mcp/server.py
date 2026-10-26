@@ -147,8 +147,12 @@ def build_server(
             "Plans are advisory drafts, not live cloud-access checks or approvals. Deployment is "
             "not implemented: never claim resources were created or that the app is running. "
             "When proposing ECS and list_ecs_options is enabled, discover real catalogs before recommending "
-            "specific IDs. Use evidence from discovery in the document, label unavailable catalogs and "
-            "unchecked compatibility clearly, and never imply catalog visibility grants write permission."
+            "specific choices. Explain options by name, ask the user to choose when ambiguous and pass IDs "
+            "internally through prepare_deployment.ecs_selection. Backend checks and stores a fresh snapshot "
+            "with actual flavor sizing and requested root disk. Never fabricate successful checks in source "
+            "findings. If checks fail, explain the gap; do not silently drop the user's choices. Generic drafts "
+            "without ecs_selection are still allowed, with placement unverified. Label unavailable catalogs "
+            "and unchecked compatibility clearly; catalog visibility does not grant write permission."
         ),
         auth_server_provider=oauth_provider,
         auth=AuthSettings(
